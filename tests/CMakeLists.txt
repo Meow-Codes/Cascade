@@ -12,4 +12,4 @@ target_link_libraries(cascade_tests PRIVATE cascade_core gtest_main)
 target_include_directories(cascade_tests PRIVATE ${CMAKE_SOURCE_DIR}/cpp/core)
 
 include(GoogleTest)
-gtest_discover_tests(cascade_tests)
+gtest_add_tests(TARGET cascade_tests)
