@@ -25,7 +25,8 @@
 #include <cstring>
 #include <mutex>
 #include <new>
-#include <vector>
+#include <cassert>
+#include <deque>
 
 namespace cascade::core {
 
@@ -74,6 +75,7 @@ public:
     void deallocate(void* p) noexcept {
         if (!p) return;
         std::uint32_t index = index_from_ptr(p);
+        assert(index != kNullIndex);
 
         std::uint64_t old_head = free_head_.load(std::memory_order_acquire);
         std::uint64_t new_head;
@@ -126,7 +128,8 @@ private:
                 return static_cast<std::uint32_t>(s * blocks_per_slab_ + offset);
             }
         }
-        return kNullIndex; // programmer error: pointer not owned by this pool
+        assert(false && "Pointer does not belong to this MemoryPool");
+        std::terminate();
     }
 
     void grow_if_still_empty() {
@@ -161,7 +164,7 @@ private:
     std::size_t total_blocks_ = 0;
 
     std::mutex grow_mutex_;
-    std::vector<std::byte*> slabs_;
+    std::deque<std::byte*> slabs_;
 };
 
 } // namespace cascade::core
