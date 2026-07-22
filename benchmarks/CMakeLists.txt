@@ -1,0 +1,5 @@
+add_executable(bench_queue bench_queue.cpp)
+target_link_libraries(bench_queue PRIVATE cascade_core)
+
+add_executable(bench_memory_pool bench_memory_pool.cpp)
+target_link_libraries(bench_memory_pool PRIVATE cascade_core)
