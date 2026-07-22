@@ -1,12 +1,24 @@
-add_executable(cascade_tests
-  test_logger.cpp
-  test_config.cpp
-  test_memory_pool.cpp
-  test_spsc_queue.cpp
-  test_mpmc_queue.cpp
-  test_thread_pool.cpp
-  test_timer_wheel.cpp
+set(TEST_SOURCES
+    test_logger.cpp
+    test_config.cpp
+    test_memory_pool.cpp
+    test_spsc_queue.cpp
+    test_mpmc_queue.cpp
+    test_thread_pool.cpp
+    test_timer_wheel.cpp
+    test_framing.cpp
 )
+
+# Linux/POSIX networking tests
+if(UNIX AND NOT WIN32)
+    list(APPEND TEST_SOURCES
+        test_tcp.cpp
+        test_udp.cpp
+        test_connection_manager.cpp
+    )
+endif()
+
+add_executable(cascade_tests ${TEST_SOURCES})
 
 target_link_libraries(cascade_tests PRIVATE cascade_core gtest_main)
 target_include_directories(cascade_tests PRIVATE ${CMAKE_SOURCE_DIR}/cpp/core)

@@ -16,6 +16,7 @@ int main() {
         auto start = Clock::now();
         for (int i = 0; i < kIters; ++i) {
             auto* p = new Block64();
+            asm volatile("" : : "g"(p) : "memory"); // prevent optimizing away
             delete p;
         }
         auto end = Clock::now();

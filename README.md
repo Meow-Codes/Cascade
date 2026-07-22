@@ -1,3 +1,6 @@
+![CI](https://github.com/Meow-Codes/Cascade/actions/workflows/ci.yml/badge.svg)
+![License](...)
+
 # Cascade
 
 A high-performance distributed media streaming infrastructure built from scratch in modern C++23 and Go.
@@ -65,13 +68,44 @@ ctest --test-dir build
 
 ---
 
-## Build
+# Building
+
+## Linux
 
 ```bash
-cmake -S . -B build -G Ninja
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
+ctest --test-dir build --output-on-failure
+```
+
+Enable AddressSanitizer:
+
+```bash
+cmake -S . -B build-asan \
+    -DCMAKE_BUILD_TYPE=Debug \
+    -DCASCADE_ENABLE_ASAN=ON \
+    -DCASCADE_ENABLE_UBSAN=ON
+```
+
+Enable ThreadSanitizer (Linux only):
+
+```bash
+cmake -S . -B build-tsan \
+    -DCMAKE_BUILD_TYPE=Debug \
+    -DCASCADE_ENABLE_TSAN=ON
+```
+
+---
+
+## Windows (MSYS2 UCRT64)
+
+```bash
+cmake -S . -B build
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
+
+Networking tests requiring POSIX sockets are automatically skipped on Windows.
 
 ---
 
@@ -82,6 +116,27 @@ Benchmarks were run on:
 - Windows 11
 - GCC 16
 - Release build
+
+Queue throughput (Ryzen ...)
+
+SPSC
+313 M ops/sec
+
+MPMC
+
+1P/1C 36.4 M ops/sec
+2P/2C 11.8 M ops/sec
+4P/4C 8.7 M ops/sec
+8P/8C 5.3 M ops/sec
+
+## Benchmarks
+
+```bash
+cmake --build build --target bench_queue bench_memory_pool
+
+./build/benchmarks/bench_queue
+./build/benchmarks/bench_memory_pool
+```
 
 ### Queue throughput
 
