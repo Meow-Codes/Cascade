@@ -7,6 +7,7 @@ set(TEST_SOURCES
     test_thread_pool.cpp
     test_timer_wheel.cpp
     test_framing.cpp
+    test_rate_limiter.cpp
 )
 
 # Linux/POSIX networking tests
