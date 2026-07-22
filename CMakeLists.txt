@@ -30,6 +30,31 @@ FetchContent_Declare(
   GIT_REPOSITORY https://github.com/google/googletest.git
   GIT_TAG v1.15.2
 )
+
+option(CASCADE_ENABLE_TSAN "Enable ThreadSanitizer" OFF)
+option(CASCADE_ENABLE_ASAN "Enable AddressSanitizer" OFF)
+option(CASCADE_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer" OFF)
+
+if(CASCADE_ENABLE_TSAN)
+    add_compile_options(-fsanitize=thread -g -O1)
+    add_link_options(-fsanitize=thread)
+endif()
+
+if(CASCADE_ENABLE_ASAN OR CASCADE_ENABLE_UBSAN)
+
+    if(CASCADE_ENABLE_ASAN)
+        add_compile_options(-fsanitize=address)
+        add_link_options(-fsanitize=address)
+    endif()
+
+    if(CASCADE_ENABLE_UBSAN)
+        add_compile_options(-fsanitize=undefined)
+        add_link_options(-fsanitize=undefined)
+    endif()
+
+    add_compile_options(-g -O1)
+endif()
+
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 

@@ -1,0 +1,54 @@
+name: Cascade CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+
+  build-gcc:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt update
+          sudo apt install -y ninja-build cmake g++
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  asan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Clang
+        run: |
+          sudo apt update
+          sudo apt install -y clang ninja-build cmake
+
+      - name: Configure
+        run: |
+          CC=clang \
+          CXX=clang++ \
+          cmake -S . -B build-asan \
+          -G Ninja \
+          -DCASCADE_ENABLE_ASAN=ON \
+          -DCASCADE_ENABLE_UBSAN=ON
+
+      - name: Build
+        run: cmake --build build-asan
+
+      - name: Test
+        run: ctest --test-dir build-asan --output-on-failure

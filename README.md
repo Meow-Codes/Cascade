@@ -34,21 +34,24 @@ The project emphasizes:
 
 ## Testing
 
-Current status:
+Cascade uses GoogleTest for unit and concurrency testing.
 
-```
-22 / 22 tests passing
-```
+Current coverage:
 
-Tests include:
+- SPSC queue
+- MPMC queue
+- Memory pool
+- Thread pool
+- Timer wheel
+- Configuration manager
+- Logger
 
-- Queue correctness
-- Concurrent producer/consumer stress tests
-- Memory pool validation
-- Thread pool execution
-- Timer wheel scheduling
-- Configuration loading
-- Logger concurrency
+Run:
+
+```bash
+cmake -S . -B build
+cmake --build build
+ctest --test-dir build
 
 ---
 
