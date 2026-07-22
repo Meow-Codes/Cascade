@@ -75,6 +75,36 @@ ctest --test-dir build --output-on-failure
 
 ---
 
+## Performance
+
+Benchmarks were run on:
+
+- Windows 11
+- GCC 16
+- Release build
+
+### Queue throughput
+
+| Benchmark | Throughput |
+|-----------|-----------:|
+| SPSC (1P/1C) | 313M ops/sec |
+| MPMC (1P/1C) | 36M ops/sec |
+| MPMC (2P/2C) | 11.8M ops/sec |
+| MPMC (4P/4C) | 8.7M ops/sec |
+| MPMC (8P/8C) | 5.2M ops/sec |
+
+Run locally:
+
+```bash
+cmake -S . -B build
+cmake --build build --config Release
+
+./build/benchmarks/bench_queue
+./build/benchmarks/bench_memory_pool
+```
+
+---
+
 ## Roadmap
 
 - Phase 1 — Core concurrency primitives
