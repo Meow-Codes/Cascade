@@ -43,7 +43,9 @@ inline std::vector<std::uint8_t> encode_audio_packet(std::uint32_t sequence, std
     out[pos++] = flags;
     std::uint16_t len16 = static_cast<std::uint16_t>(payload_len);
     std::memcpy(out.data() + pos, &len16, 2); pos += 2;
-    if (payload_len > 0) std::memcpy(out.data() + pos, payload, payload_len);
+    if (payload != nullptr && payload_len > 0) {
+        std::memcpy(out.data() + pos, payload, payload_len);
+    }
     return out;
 }
 
