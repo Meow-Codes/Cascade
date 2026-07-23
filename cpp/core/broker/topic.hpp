@@ -20,13 +20,14 @@ namespace cascade::core::broker {
 class Topic {
 public:
     Topic(std::string name, int num_partitions, std::string base_dir, std::size_t max_segment_bytes,
-          OffsetStore& offset_store, std::uint64_t max_lag_records)
-        : name_(std::move(name)) {
+      OffsetStore& offset_store, std::uint64_t max_lag_records,
+      FlushPolicy flush_policy = FlushPolicy::PerMessage)
+    : name_(std::move(name)) {
         partitions_.reserve(static_cast<std::size_t>(num_partitions));
         for (int i = 0; i < num_partitions; ++i) {
             std::string dir = base_dir + "/" + name_ + "/partition-" + std::to_string(i);
             partitions_.push_back(std::make_shared<Partition>(name_, i, dir, max_segment_bytes,
-                                                                offset_store, max_lag_records));
+                                                                offset_store, max_lag_records, flush_policy));
         }
     }
 

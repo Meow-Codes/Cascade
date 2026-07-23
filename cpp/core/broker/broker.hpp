@@ -23,13 +23,14 @@ public:
     explicit Broker(std::string data_dir) : data_dir_(std::move(data_dir)) {}
 
     std::shared_ptr<Topic> create_topic(const std::string& name, int num_partitions,
-                                         std::size_t max_segment_bytes = 64 * 1024 * 1024,
-                                         std::uint64_t max_lag_records = 0 /* 0 = unlimited */) {
+                                     std::size_t max_segment_bytes = 64 * 1024 * 1024,
+                                     std::uint64_t max_lag_records = 0,
+                                     FlushPolicy flush_policy = FlushPolicy::PerMessage) {
         std::lock_guard<std::mutex> lock(mutex_);
         if (topics_.count(name)) throw std::runtime_error("topic already exists: " + name);
 
         auto topic = std::make_shared<Topic>(name, num_partitions, data_dir_, max_segment_bytes,
-                                              offset_store_, max_lag_records);
+                                            offset_store_, max_lag_records, flush_policy);
         topics_[name] = topic;
         return topic;
     }
