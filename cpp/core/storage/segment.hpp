@@ -179,7 +179,9 @@ public:
         if (sealed_) return;
         ::msync(data_, write_pos_, MS_SYNC);
         ::munmap(data_, mapped_len_);
-        ::ftruncate(fd_, static_cast<off_t>(write_pos_));
+        if (::ftruncate(fd_, static_cast<off_t>(write_pos_)) != 0) {
+            throw std::runtime_error("ftruncate failed");
+        }
 
         mapped_len_ = write_pos_ > 0 ? write_pos_ : 1; // mmap requires length > 0
         void* addr = ::mmap(nullptr, mapped_len_, PROT_READ, MAP_SHARED, fd_, 0);

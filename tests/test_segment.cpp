@@ -63,7 +63,8 @@ TEST(Segment, DetectsTornWriteViaCrcAndTruncatesCorrectly) {
     ASSERT_GE(fd, 0);
     // record a: 16 header + 13 payload = 29 bytes. record b payload starts at 29+16=45.
     std::uint8_t corrupt_byte = 0xFF;
-    ::pwrite(fd, &corrupt_byte, 1, 45);
+    ssize_t written = ::pwrite(fd, &corrupt_byte, 1, 45);
+    ASSERT_EQ(written, 1);
     ::close(fd);
 
     Segment reopened(path, 0, 1 << 20);
