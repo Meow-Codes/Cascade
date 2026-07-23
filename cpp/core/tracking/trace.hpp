@@ -35,9 +35,19 @@ public:
 
     std::uint64_t start_span(std::string name, std::uint64_t parent_span_id) {
         std::lock_guard<std::mutex> lock(mutex_);
+
         std::uint64_t id = random_id();
-        spans_.push_back(SpanRecord{std::move(name), trace_id_, id, parent_span_id,
-                                     std::chrono::steady_clock::now(), {}});
+        auto now = std::chrono::steady_clock::now();
+
+        spans_.push_back(SpanRecord{
+            std::move(name),
+            trace_id_,
+            id,
+            parent_span_id,
+            now,
+            now
+        });
+
         return id;
     }
 
