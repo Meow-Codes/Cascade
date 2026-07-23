@@ -12,6 +12,9 @@ set(TEST_SOURCES
     test_log_recovery.cpp
     test_storage_property.cpp
     test_storage_concurrent_readers.cpp
+    test_broker_ordering.cpp
+    test_broker_consumer_group.cpp
+    test_broker_backpressure.cpp
 )
 
 # Linux/POSIX networking tests

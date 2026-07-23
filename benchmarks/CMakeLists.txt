@@ -9,3 +9,6 @@ target_link_libraries(bench_tcp PRIVATE cascade_core)
 
 add_executable(bench_storage bench_storage.cpp)
 target_link_libraries(bench_storage PRIVATE cascade_core)
+
+add_executable(bench_broker bench_broker.cpp)
+target_link_libraries(bench_broker PRIVATE cascade_core)
