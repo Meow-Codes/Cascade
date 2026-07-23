@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include "broker/broker.hpp"
 #include "broker/producer.hpp"
+#include "metrics/metrics_registry.hpp"
 
 using namespace cascade::core::broker;
 using Clock = std::chrono::steady_clock;
@@ -24,7 +25,7 @@ TEST(MetricsOverhead, AttachingMetricsDoesNotMeaningfullySlowPublish) {
         Broker broker(dir);
         auto topic = broker.create_topic("overhead", 1, 64 * 1024 * 1024, 0, FlushPolicy::Manual); // isolate metrics overhead from msync cost
         if (with_metrics) {
-            static metrics::MetricsRegistry registry;
+            static cascade::core::metrics::MetricsRegistry registry;
             topic->partition(0)->attach_metrics(registry);
         }
         Producer producer(topic);
