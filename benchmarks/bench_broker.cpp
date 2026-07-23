@@ -14,15 +14,22 @@ using Clock = std::chrono::steady_clock;
 static void bench_throughput() {
     auto dir = std::string("/tmp/cascade_bench_broker_throughput_") + std::to_string(::getpid());
     std::filesystem::remove_all(dir);
+    std::puts("Creating broker...");
     Broker broker(dir);
+    std::puts("Creating topic...");
     auto topic = broker.create_topic("bench", 4, 64 * 1024 * 1024);
+    std::puts("Creating producer...");
     Producer producer(topic);
 
+    std::puts("Starting publish...");
     constexpr int kMessages = 500000;
     std::vector<std::uint8_t> payload(128, 0x42);
 
     auto start = Clock::now();
     for (int i = 0; i < kMessages; ++i) {
+        if (i % 10000 == 0){
+            std::printf("%d\n", i);
+        }
         producer.publish(payload.data(), static_cast<std::uint32_t>(payload.size()));
     }
     auto end = Clock::now();

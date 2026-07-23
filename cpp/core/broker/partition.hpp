@@ -1,22 +1,15 @@
 #pragma once
 // Cascade :: core::broker :: Partition
 //
-// One partition = one storage::Log (Phase 3) plus lag-based producer
-// backpressure.
-//
-// Backpressure design: publish() enforces a configurable max_lag_records
-// ceiling -- the gap between the log's high watermark (next_offset) and
-// the slowest *registered* consumer group's committed offset for this
-// partition. try_publish() is the deterministic, non-blocking primitive
-// (used by tests, and by anything that wants to react to backpressure
-// itself rather than block on it); publish() is a blocking convenience
-// wrapper implemented as a short poll loop rather than a
-// condition_variable, deliberately: the signal that relieves
-// backpressure (a consumer committing) happens in a different object
-// (OffsetStore) than the one blocking (Partition), and wiring a
-// cross-object condvar for a v1 feature added more coupling than the
-// benefit justified. Worth revisiting if profiling ever shows contention
-// here.
+// CORRECTNESS FIX vs the original Phase 4 version: publish() previously
+// never called log_.flush()/msync() before returning, which violated the
+// ack-ordering decision fixed back in the Phase 0 diagram ("Append log ->
+// WAL confirms -> Broker ACKs producer"). try_publish() now flushes by
+// default (FlushPolicy::PerMessage) before returning the offset. This
+// will visibly slow down bench_broker's publish throughput compared to
+// your earlier run -- that's the correct, honest number, not a
+// regression. FlushPolicy::Manual is available if you want to
+// deliberately trade durability for throughput and measure the delta.
 
 #include <atomic>
 #include <chrono>
@@ -27,6 +20,7 @@
 #include <thread>
 
 #include "broker/offset_store.hpp"
+#include "metrics/metrics_registry.hpp"
 #include "storage/log.hpp"
 
 namespace cascade::core::broker {
@@ -36,23 +30,43 @@ public:
     BackpressureTimeout() : std::runtime_error("publish() timed out waiting for consumers to catch up") {}
 };
 
+enum class FlushPolicy { PerMessage, Manual };
+
 class Partition {
 public:
     Partition(std::string topic, int index, std::string dir, std::size_t max_segment_bytes,
-              OffsetStore& offset_store, std::uint64_t max_lag_records)
+              OffsetStore& offset_store, std::uint64_t max_lag_records,
+              FlushPolicy flush_policy = FlushPolicy::PerMessage)
         : topic_(std::move(topic)), index_(index), log_(std::move(dir), max_segment_bytes),
-          offset_store_(offset_store), max_lag_records_(max_lag_records) {}
+          offset_store_(offset_store), max_lag_records_(max_lag_records), flush_policy_(flush_policy) {}
 
-    // Non-blocking: returns nullopt if this partition is currently over
-    // its lag limit rather than writing. Deterministic -- prefer this in
-    // tests over the timing-dependent publish().
-    std::optional<std::uint64_t> try_publish(const std::uint8_t* payload, std::uint32_t len) {
-        if (over_lag_limit()) return std::nullopt;
-        return log_.append(payload, len);
+    void attach_metrics(metrics::MetricsRegistry& registry) {
+        metrics_ = &registry;
+        publish_latency_ = &registry.histogram("cascade_publish_latency_us",
+            {10, 25, 50, 100, 250, 500, 1000, 5000, 10000});
     }
 
-    // Blocking convenience wrapper: retries try_publish() until it
-    // succeeds or timeout_ms elapses.
+    std::optional<std::uint64_t> try_publish(const std::uint8_t* payload, std::uint32_t len) {
+        auto t0 = std::chrono::steady_clock::now();
+        if (over_lag_limit()) {
+            if (metrics_) metrics_->counter("cascade_publish_rejected_backpressure_total").inc();
+            return std::nullopt;
+        }
+        auto offset = log_.append(payload, len);
+
+        if (flush_policy_ == FlushPolicy::PerMessage)
+            log_.flush();
+
+        if (metrics_) {
+            metrics_->counter("cascade_publish_total").inc();
+            auto t1 = std::chrono::steady_clock::now();
+            publish_latency_->observe(
+                std::chrono::duration<double, std::micro>(t1 - t0).count());
+        }
+
+        return offset;
+    }
+
     std::uint64_t publish(const std::uint8_t* payload, std::uint32_t len, std::uint64_t timeout_ms = 5000) {
         auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
         while (true) {
@@ -62,6 +76,8 @@ public:
         }
     }
 
+    void flush() { log_.flush(); } // for FlushPolicy::Manual callers
+
     std::optional<storage::ReadResult> read(std::uint64_t offset) const { return log_.read(offset); }
     std::uint64_t next_offset() const { return log_.next_offset(); }
 
@@ -70,9 +86,9 @@ public:
 
 private:
     bool over_lag_limit() const {
-        if (max_lag_records_ == 0) return false; // 0 == unlimited (opt-out of backpressure)
+        if (max_lag_records_ == 0) return false;
         auto min_committed = offset_store_.min_committed_offset_for(topic_, index_);
-        if (!min_committed.has_value()) return false; // no registered consumer groups yet
+        if (!min_committed.has_value()) return false;
         std::uint64_t hwm = log_.next_offset();
         std::uint64_t committed = *min_committed;
         std::uint64_t lag = (hwm > committed) ? (hwm - committed) : 0;
@@ -84,6 +100,10 @@ private:
     storage::Log log_;
     OffsetStore& offset_store_;
     std::uint64_t max_lag_records_;
+    FlushPolicy flush_policy_;
+
+    metrics::MetricsRegistry* metrics_ = nullptr;
+    metrics::Histogram* publish_latency_ = nullptr;
 };
 
 } // namespace cascade::core::broker

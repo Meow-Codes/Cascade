@@ -15,6 +15,10 @@ set(TEST_SOURCES
     test_broker_ordering.cpp
     test_broker_consumer_group.cpp
     test_broker_backpressure.cpp
+    test_metrics_registry.cpp
+    test_metrics_http_server.cpp
+    test_tracing.cpp
+    test_metrics_overhead.cpp
 )
 
 # Linux/POSIX networking tests

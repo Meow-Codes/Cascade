@@ -26,6 +26,8 @@
 
 #include "broker/offset_store.hpp"
 #include "broker/topic.hpp"
+#include "metrics/metrics_registry.hpp"
+
 
 namespace cascade::core::broker {
 
@@ -48,6 +50,8 @@ public:
             }
         }
     }
+    
+    void attach_metrics(metrics::MetricsRegistry& registry) { metrics_ = &registry; }
 
     // Reads up to max_records total across all assigned partitions,
     // advancing in-memory cursors (not yet persisted -- call commit()
@@ -58,12 +62,13 @@ public:
             auto partition = topic_->partition(partition_index);
             while (results.size() < max_records) {
                 auto rec = partition->read(cursor);
-                if (!rec.has_value()) break; // caught up on this partition
+                if (!rec.has_value()) break;
                 results.push_back({partition_index, rec->offset, std::move(rec->payload)});
                 cursor++;
             }
             if (results.size() >= max_records) break;
         }
+        if (metrics_ && !results.empty()) metrics_->counter("cascade_consume_total").inc(results.size());
         return results;
     }
 
@@ -80,6 +85,7 @@ private:
     std::string group_;
     OffsetStore& offset_store_;
     std::unordered_map<int, std::uint64_t> cursors_;
+    metrics::MetricsRegistry* metrics_ = nullptr;
 };
 
 } // namespace cascade::core::broker
