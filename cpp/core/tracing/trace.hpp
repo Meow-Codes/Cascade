@@ -24,7 +24,12 @@ struct SpanRecord {
     std::uint64_t parent_span_id; // 0 = root
     std::chrono::steady_clock::time_point start;
     std::chrono::steady_clock::time_point end;
-    double duration_us() const { return std::chrono::duration<double, std::micro>(end - start).count(); }
+    double duration_us() const {
+        auto finish = (end == std::chrono::steady_clock::time_point{})
+                        ? std::chrono::steady_clock::now()
+                        : end;
+        return std::chrono::duration<double, std::micro>(finish - start).count();
+    }
 };
 
 class Trace {
