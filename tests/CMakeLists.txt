@@ -7,7 +7,14 @@ set(TEST_SOURCES
     test_thread_pool.cpp
     test_timer_wheel.cpp
     test_framing.cpp
+    test_tcp.cpp
+    test_udp.cpp
+    test_connection_manager.cpp
     test_rate_limiter.cpp
+    test_segment.cpp
+    test_log_recovery.cpp
+    test_storage_property.cpp
+    test_storage_concurrent_readers.cpp
 )
 
 # Linux/POSIX networking tests

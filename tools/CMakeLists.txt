@@ -1,0 +1,5 @@
+add_executable(wal_kill_writer wal_kill_writer.cpp)
+target_link_libraries(wal_kill_writer PRIVATE cascade_core)
+
+add_executable(wal_verifier wal_verifier.cpp)
+target_link_libraries(wal_verifier PRIVATE cascade_core)
