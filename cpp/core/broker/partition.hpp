@@ -53,15 +53,17 @@ public:
             return std::nullopt;
         }
         auto offset = log_.append(payload, len);
-        if (!offset.has_value()) return std::nullopt;
 
-        if (flush_policy_ == FlushPolicy::PerMessage) log_.flush();
+        if (flush_policy_ == FlushPolicy::PerMessage)
+            log_.flush();
 
         if (metrics_) {
             metrics_->counter("cascade_publish_total").inc();
             auto t1 = std::chrono::steady_clock::now();
-            publish_latency_->observe(std::chrono::duration<double, std::micro>(t1 - t0).count());
+            publish_latency_->observe(
+                std::chrono::duration<double, std::micro>(t1 - t0).count());
         }
+
         return offset;
     }
 

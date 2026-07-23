@@ -28,7 +28,6 @@
 #include "broker/topic.hpp"
 #include "metrics/metrics_registry.hpp"
 
-void attach_metrics(metrics::MetricsRegistry& registry) { metrics_ = &registry; }
 
 namespace cascade::core::broker {
 
@@ -51,6 +50,8 @@ public:
             }
         }
     }
+    
+    void attach_metrics(metrics::MetricsRegistry& registry) { metrics_ = &registry; }
 
     // Reads up to max_records total across all assigned partitions,
     // advancing in-memory cursors (not yet persisted -- call commit()
