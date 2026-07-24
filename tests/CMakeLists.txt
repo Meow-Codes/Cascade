@@ -25,6 +25,9 @@ set(TEST_SOURCES
     test_priority_queue.cpp
     test_jitter_buffer.cpp
     test_audio_session_udp.cpp
+    test_network_estimator.cpp
+    test_bitrate_controller.cpp
+    test_adaptive_sender.cpp
 )
 
 # Linux/POSIX networking tests

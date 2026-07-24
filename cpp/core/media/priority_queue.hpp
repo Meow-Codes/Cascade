@@ -16,6 +16,8 @@
 #include <mutex>
 #include <optional>
 #include <vector>
+#include <utility>
+#include <optional>
 
 namespace cascade::core::media {
 
@@ -35,6 +37,21 @@ public:
                 auto front = std::move(q.front());
                 q.pop_front();
                 return front;
+            }
+        }
+        return std::nullopt;
+    }
+
+    // Like pop(), but also reports which priority level the packet came
+    // from -- needed by AdaptiveSender to exempt High-priority traffic from
+    // bandwidth shaping while still throttling Normal.
+    std::optional<std::pair<PacketPriority, std::vector<std::uint8_t>>> pop_with_priority() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        for (std::size_t i = 0; i < queues_.size(); ++i) {
+            if (!queues_[i].empty()) {
+                auto front = std::move(queues_[i].front());
+                queues_[i].pop_front();
+                return std::make_pair(static_cast<PacketPriority>(i), std::move(front));
             }
         }
         return std::nullopt;

@@ -15,3 +15,6 @@ target_link_libraries(bench_broker PRIVATE cascade_core)
 
 add_executable(bench_media bench_media.cpp)
 target_link_libraries(bench_media PRIVATE cascade_core)
+
+add_executable(bench_adaptive bench_adaptive.cpp)
+target_link_libraries(bench_adaptive PRIVATE cascade_core)
