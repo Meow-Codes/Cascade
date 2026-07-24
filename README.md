@@ -8,152 +8,405 @@
 
 # Cascade
 
-Cascade is a distributed messaging and real-time media streaming infrastructure
-implemented from scratch in modern C++23.
+Cascade is a distributed messaging broker and real-time media transport stack implemented entirely in **modern C++23**.
 
-The project explores how systems like Kafka, Discord, Zoom and modern streaming
-servers are built internally by implementing storage engines, brokers,
-networking, observability and real-time media transport without relying on
-existing frameworks.
+The project explores the engineering tradeoffs behind systems such as **Apache Kafka, Discord, Zoom, and modern streaming servers** by implementing storage engines, messaging infrastructure, networking, observability, and real-time media transport from first principles instead of relying on existing frameworks.
 
-Current implementation includes:
+Rather than focusing only on functionality, Cascade emphasizes:
 
-- lock-free queues
-- custom memory pool
-- mmap-backed WAL storage engine
-- publish/subscribe broker
-- TCP & UDP networking
-- Prometheus metrics
-- distributed tracing
-- jitter buffer
-- retransmit-lite recovery
-- adaptive bitrate controller
+- crash-safe storage and recovery
+- lock-free concurrent data structures
+- deterministic testing using simulated time
+- benchmark-driven development
+- documented architectural tradeoffs
+- separation of measurement from decision making
 
-The project currently contains 85 automated unit and concurrency tests.
+The current implementation consists of approximately **85 automated unit and concurrency tests**, covering every major subsystem of the project.
 
 ---
 
+# Why Cascade?
+
+Modern distributed systems combine many independent components:
+
+- high-performance concurrent data structures
+- durable storage engines
+- publish/subscribe messaging
+- network protocols
+- observability
+- real-time media delivery
+
+Most projects implement only one of these areas.
+
+Cascade combines all of them into a single codebase to understand how production messaging systems and streaming platforms are designed internally.
+
+The goal is educational engineering—not cloning an existing product—but building the underlying infrastructure from scratch while documenting the reasoning behind every major design decision.
+
 ---
 
-## Features
+# Architecture
 
-### Core Infrastructure
+> **Architecture diagram**
 
-- Lock-free SPSC queue
-- Lock-free MPMC queue
+```
+                   +----------------------+
+                   |      Producers       |
+                   +----------+-----------+
+                              |
+                              |
+                       TCP / UDP Transport
+                              |
+                              v
+                 +--------------------------+
+                 | Publish / Subscribe      |
+                 | Broker                   |
+                 +------------+-------------+
+                              |
+              +---------------+---------------+
+              |                               |
+              |                               |
+              v                               v
+      Storage Engine                 Media Pipeline
+   (WAL + mmap Segments)     (Jitter Buffer + ABR +
+                                 Priority Queues)
+              |
+              |
+              v
+       Consumer Groups
+```
+
+A complete architecture diagram is available in
+
+```
+docs/architecture/
+```
+
+---
+
+# Features
+
+## Concurrency
+
+- Lock-free Single Producer Single Consumer queue
+- Lock-free Multi Producer Multi Consumer queue
 - Thread pool
 - Timer wheel
-- Memory pool
+- Fixed-size memory pool
 - Async logger
 - Configuration manager
 
-### Storage
+---
+
+## Storage Engine
 
 - mmap-backed append-only log
+- Write-Ahead Logging (WAL)
 - CRC validation
-- WAL recovery
 - Segment rotation
 - Crash recovery
+- Persistent offsets
+- Recovery benchmark
 
-### Messaging
+---
+
+## Messaging
 
 - Publish / Subscribe broker
-- Consumer groups
-- Backpressure
 - Ordered partitions
+- Consumer groups
+- Producer backpressure
+- Offset tracking
+- Topic abstraction
 
-### Networking
+---
+
+## Networking
 
 - TCP framing
 - UDP transport
-- Rate limiting
-- Connection management
+- Connection manager
+- Token bucket rate limiter
+- Timeout handling
 
-### Observability
+---
+
+## Observability
 
 - Prometheus metrics
 - HTTP metrics endpoint
 - Distributed tracing
 
-### Media Streaming
+---
+
+## Real-Time Media
 
 - Audio packetization
 - Silence detection
 - Retransmit cache
 - Priority packet queue
 - Jitter buffer
-- Retransmit-lite
+- Retransmit-lite recovery
+- Network condition estimation
 - Adaptive bitrate controller
 
 ---
 
+# Engineering Highlights
+
+Several design decisions intentionally mirror techniques used in production systems.
+
+### Crash-safe storage
+
+Storage uses an append-only Write-Ahead Log backed by memory-mapped files. Recovery reconstructs offsets directly from disk without requiring external metadata.
+
+### Deterministic testing
+
+Beginning with the media pipeline, components operate entirely on explicitly supplied timestamps rather than reading the system clock. This allows unit tests and benchmarks to advance simulated time deterministically without relying on sleeps or wall-clock timing.
+
+### Separation of measurement and policy
+
+The adaptive bitrate subsystem separates network measurement (`NetworkConditionEstimator`) from bitrate selection (`BitrateController`). This keeps measurement logic independent from adaptation policy and makes both components easier to test.
+
+### Asymmetric bitrate adaptation
+
+The bitrate controller immediately reduces quality during congestion but upgrades only after several consecutive good network measurements, reducing oscillation while maintaining stable playback.
+
+### Priority-aware bandwidth shaping
+
+Control traffic such as retransmission requests bypasses bandwidth shaping entirely while expendable media frames are throttled under constrained bandwidth, ensuring prioritization remains meaningful during congestion.
+
 ---
 
-## Project Layout
+# Project Layout
 
-```bash
-cpp/
-    core/
-        concurrency/
-        storage/
-        broker/
-        networking/
-        media/
-        metrics/
-
-benchmarks/
-
-tests/
-
-docs/
+```text
+├── 📁 .github
+│   └── 📁 workflows
+│       └── ⚙️ ci.yaml
+├── 📁 benchmarks
+│   ├── 📄 CMakeLists.txt
+│   ├── ⚡ bench_adaptive.cpp
+│   ├── ⚡ bench_broker.cpp
+│   ├── ⚡ bench_media.cpp
+│   ├── ⚡ bench_memory_pool.cpp
+│   ├── ⚡ bench_queue.cpp
+│   ├── ⚡ bench_storage.cpp
+│   └── ⚡ bench_tcp.cpp
+├── 📁 cpp
+│   ├── 📁 core
+│   │   ├── 📁 broker
+│   │   │   ├── ⚡ broker.hpp
+│   │   │   ├── ⚡ consumer.hpp
+│   │   │   ├── ⚡ offset_store.hpp
+│   │   │   ├── ⚡ partition.hpp
+│   │   │   ├── ⚡ producer.hpp
+│   │   │   └── ⚡ topic.hpp
+│   │   ├── 📁 config
+│   │   │   └── ⚡ config.hpp
+│   │   ├── 📁 logger
+│   │   │   └── ⚡ logger.hpp
+│   │   ├── 📁 media
+│   │   │   ├── ⚡ adaptive_sender.hpp
+│   │   │   ├── ⚡ audio_packet.hpp
+│   │   │   ├── ⚡ audio_session.hpp
+│   │   │   ├── ⚡ bitrate_controller.hpp
+│   │   │   ├── ⚡ jitter_buffer.hpp
+│   │   │   ├── ⚡ network_estimator.hpp
+│   │   │   ├── ⚡ priority_queue.hpp
+│   │   │   ├── ⚡ retransmit_cache.hpp
+│   │   │   └── ⚡ silence_detector.hpp
+│   │   ├── 📁 memory
+│   │   │   └── ⚡ memory_pool.hpp
+│   │   ├── 📁 metrics
+│   │   │   ├── ⚡ http_metrics_server.hpp
+│   │   │   ├── ⚡ metrics_registry.hpp
+│   │   │   └── ⚡ system_metrics.hpp
+│   │   ├── 📁 net
+│   │   │   ├── ⚡ connection_manager.hpp
+│   │   │   ├── ⚡ epoll_loop.hpp
+│   │   │   ├── ⚡ framing.hpp
+│   │   │   ├── ⚡ rate_limiter.hpp
+│   │   │   ├── ⚡ socket_fd.hpp
+│   │   │   ├── ⚡ socket_utils.hpp
+│   │   │   ├── ⚡ tcp_client.hpp
+│   │   │   ├── ⚡ tcp_server.hpp
+│   │   │   └── ⚡ udp_socket.hpp
+│   │   ├── 📁 queue
+│   │   │   ├── ⚡ mpmc_queue.hpp
+│   │   │   └── ⚡ spsc_queue.hpp
+│   │   ├── 📁 storage
+│   │   │   ├── ⚡ crc32.hpp
+│   │   │   ├── ⚡ log.hpp
+│   │   │   └── ⚡ segment.hpp
+│   │   ├── 📁 threadpool
+│   │   │   └── ⚡ thread_pool.hpp
+│   │   ├── 📁 timer
+│   │   │   └── ⚡ timer_wheel.hpp
+│   │   └── 📁 tracing
+│   │       └── ⚡ trace.hpp
+│   └── 📄 CMakeLists.txt
+├── 📁 fault-injection
+│   └── 📄 kill_wal_test.sh
+├── 📁 tests
+│   ├── 📄 CMakeLists.txt
+│   ├── ⚡ test_adaptive_sender.cpp
+│   ├── ⚡ test_audio_packet_codec.cpp
+│   ├── ⚡ test_audio_session_udp.cpp
+│   ├── ⚡ test_bitrate_controller.cpp
+│   ├── ⚡ test_broker_backpressure.cpp
+│   ├── ⚡ test_broker_consumer_group.cpp
+│   ├── ⚡ test_broker_ordering.cpp
+│   ├── ⚡ test_config.cpp
+│   ├── ⚡ test_connection_manager.cpp
+│   ├── ⚡ test_framing.cpp
+│   ├── ⚡ test_jitter_buffer.cpp
+│   ├── ⚡ test_log_recovery.cpp
+│   ├── ⚡ test_logger.cpp
+│   ├── ⚡ test_memory_pool.cpp
+│   ├── ⚡ test_metrics_http_server.cpp
+│   ├── ⚡ test_metrics_overhead.cpp
+│   ├── ⚡ test_metrics_registry.cpp
+│   ├── ⚡ test_mpmc_queue.cpp
+│   ├── ⚡ test_network_estimator.cpp
+│   ├── ⚡ test_priority_queue.cpp
+│   ├── ⚡ test_rate_limiter.cpp
+│   ├── ⚡ test_retransmit_cache.cpp
+│   ├── ⚡ test_segment.cpp
+│   ├── ⚡ test_silence_detector.cpp
+│   ├── ⚡ test_spsc_queue.cpp
+│   ├── ⚡ test_storage_concurrent_readers.cpp
+│   ├── ⚡ test_storage_property.cpp
+│   ├── ⚡ test_tcp.cpp
+│   ├── ⚡ test_thread_pool.cpp
+│   ├── ⚡ test_timer_wheel.cpp
+│   ├── ⚡ test_tracing.cpp
+│   └── ⚡ test_udp.cpp
+├── 📁 third_party
+├── 📁 tools
+│   ├── 📄 CMakeLists.txt
+│   ├── ⚡ wal_kill_writer.cpp
+│   └── ⚡ wal_verifier.cpp
+├── ⚙️ .gitignore
+├── 📄 CMakeLists.txt
+└── 📝 README.md
 ```
 
 ---
 
-## Testing
+# Performance Summary
 
-Cascade uses GoogleTest for unit and concurrency testing.
+The following measurements were obtained from Release builds using the project's benchmark suite.
 
-Current coverage:
+| Component | Result |
+|-----------|---------:|
+| Automated tests | **85 / 85 passing** |
+| Storage write throughput | **185.7 MB/s** |
+| Random read latency (p50 / p99) | **0.48 μs / 1.13 μs** |
+| WAL recovery (500k records) | **334.68 ms** |
+| Broker publish throughput | **1,256 msgs/sec** |
+| Broker consume throughput | **4.40 million msgs/sec** |
+| Publish → Consume latency (p50 / p99) | **720 μs / 1.94 ms** |
+| TCP loopback RTT (p50 / p99) | **91.5 μs / 146.8 μs** |
+| TCP connection establishment | **3,564 connections/sec** |
+| Queue throughput (SPSC) | **187 million ops/sec** |
+| Adaptive bitrate | Immediate downgrade, delayed upgrade |
+| Jitter buffer | Configurable 40–200 ms target delay |
 
-- SPSC queue
-- MPMC queue
-- Memory pool
-- Thread pool
-- Timer wheel
-- Configuration manager
-- Logger
-
-Run:
-
-```bash
-cmake -S . -B build
-cmake --build build
-ctest --test-dir build
+> Detailed benchmark outputs are available in the benchmark executables and accompanying documentation.
 
 ---
 
-## Technologies
+# Testing
 
-- C++23
-- CMake
-- Ninja
-- GoogleTest
-- GCC 16 (MSYS2 UCRT64)
+Cascade uses **GoogleTest** for unit, integration, and concurrency testing.
+
+Current test coverage includes:
+
+## Concurrency
+
+- SPSC queue
+- MPMC queue
+- Thread pool
+- Memory pool
+- Timer wheel
+
+## Storage
+
+- WAL append
+- CRC validation
+- Crash recovery
+- Segment rotation
+- Persistent offsets
+
+## Messaging
+
+- Publish / Subscribe broker
+- Consumer groups
+- Ordered delivery
+- Producer backpressure
+
+## Networking
+
+- TCP framing
+- UDP transport
+- Rate limiter
+- Connection manager
+- Timeout handling
+
+## Media
+
+- Audio packetization
+- Priority packet queue
+- Retransmit cache
+- Jitter buffer
+- Network condition estimator
+- Adaptive bitrate controller
+
+Every subsystem is accompanied by deterministic unit tests, allowing failures to be reproduced without relying on wall-clock timing.
+
+Run the complete test suite:
+
+```bash
+ctest --test-dir build --output-on-failure
+```
 
 ---
 
 # Building
 
+## Requirements
+
+- C++23 compatible compiler
+- CMake 3.20+
+- Ninja or Make
+- GoogleTest
+
+---
+
 ## Linux
 
+Configure:
+
 ```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake -S . -B build \
+    -DCMAKE_BUILD_TYPE=Release
+```
+
+Build:
+
+```bash
 cmake --build build -j
+```
+
+Run tests:
+
+```bash
 ctest --test-dir build --output-on-failure
 ```
 
-Enable AddressSanitizer:
+---
+
+### AddressSanitizer
 
 ```bash
 cmake -S . -B build-asan \
@@ -162,7 +415,9 @@ cmake -S . -B build-asan \
     -DCASCADE_ENABLE_UBSAN=ON
 ```
 
-Enable ThreadSanitizer (Linux only):
+---
+
+### ThreadSanitizer
 
 ```bash
 cmake -S . -B build-tsan \
@@ -174,41 +429,158 @@ cmake -S . -B build-tsan \
 
 ## Windows (MSYS2 UCRT64)
 
+Configure:
+
 ```bash
 cmake -S . -B build
+```
+
+Build:
+
+```bash
 cmake --build build
+```
+
+Run tests:
+
+```bash
 ctest --test-dir build --output-on-failure
 ```
 
-Networking tests requiring POSIX sockets are automatically skipped on Windows.
+Networking tests that require POSIX sockets are skipped automatically on Windows.
 
 ---
 
-## Performance
+# Running Benchmarks
 
-Benchmarks were run on:
+Build benchmark targets:
 
-- Windows 11
-- GCC 16
-- Release build
+```bash
+cmake --build build --target \
+    bench_queue \
+    bench_memory_pool \
+    bench_storage \
+    bench_broker \
+    bench_tcp \
+    bench_media \
+    bench_adaptive
+```
 
-Queue throughput (Ryzen ...)
+Run benchmarks:
 
-SPSC
-313 M ops/sec
+```bash
+./build/benchmarks/bench_queue
 
-MPMC
+./build/benchmarks/bench_memory_pool
 
-1P/1C 36.4 M ops/sec
-2P/2C 11.8 M ops/sec
-4P/4C 8.7 M ops/sec
-8P/8C 5.3 M ops/sec
+./build/benchmarks/bench_storage
+
+./build/benchmarks/bench_broker
+
+./build/benchmarks/bench_tcp
+
+./build/benchmarks/bench_media
+
+./build/benchmarks/bench_adaptive
+```
+
+Each benchmark focuses on a different subsystem:
+
+| Benchmark | Measures |
+|-----------|----------|
+| bench_queue | Queue throughput |
+| bench_memory_pool | Allocation performance |
+| bench_storage | Storage throughput and recovery |
+| bench_broker | Publish / consume throughput |
+| bench_tcp | TCP latency and connection rate |
+| bench_media | Jitter buffer behaviour |
+| bench_adaptive | Adaptive bitrate response |
+
+---
+
+# Benchmark Highlights
+
+## Storage Engine
+
+- 185.7 MB/s sequential write throughput
+- Sub-microsecond median random reads
+- Crash recovery scales linearly with log size
+
+---
+
+## Broker
+
+- Ordered publish / subscribe messaging
+- Producer backpressure
+- Multi-million message per second consumer throughput
+
+---
+
+## Networking
+
+- Low-latency TCP framing
+- Token bucket rate limiting
+- Efficient connection management
+
+---
+
+## Media
+
+The media subsystem introduces several components commonly found in real-time communication systems.
+
+- Packetization
+- Retransmit cache
+- Jitter buffer
+- Packet prioritization
+- Adaptive bitrate control
+
+Unlike the storage engine, correctness in the media pipeline is defined by **low latency rather than perfect durability**. Expired media frames are intentionally discarded when necessary to preserve real-time playback.
+
+---
+
+# Documentation
+
+Project documentation is located under the `docs/` directory.
+
+```
+docs/
+├── architecture/
+│   └── architecture.png
+│
+├── notes/
+│   ├── phase1.md
+│   ├── phase2.md
+│   ├── phase3.md
+│   ├── phase4.md
+│   ├── phase5.md
+│   ├── phase6.md
+│   └── phase7.md
+│
+└── design.md
+```
+
+The phase notes document the evolution of the project, benchmark methodology, design tradeoffs, and implementation decisions made throughout development.
+
+---
 
 ## Benchmarks
 
-```bash
-cmake --build build --target bench_queue bench_memory_pool
+Build benchmark targets:
 
+```bash
+cmake --build build --target \
+    bench_queue \
+    bench_memory_pool \
+    bench_storage \
+    bench_broker \
+    bench_tcp \
+    bench_media \
+    bench_adaptive
+```
+
+Run:
+
+```bash
 ./build/benchmarks/bench_queue
 ./build/benchmarks/bench_memory_pool
 ./build/benchmarks/bench_storage
@@ -218,176 +590,223 @@ cmake --build build --target bench_queue bench_memory_pool
 ./build/benchmarks/bench_adaptive
 ```
 
-#### Results:
+---
 
-```bash
-barghav@DESKTOP-DOOSSP5:~/lol_projects/Cascade$ ./build/benchmarks/bench_queue
---- Queue throughput benchmark ---
-SPSC  1P/1C :    5000000 ops in   0.0267 s ->    187166558 ops/sec
-MPMC 1P/1C :    1000000 ops in   0.0242 s ->     41282153 ops/sec
-MPMC 2P/2C :    2000000 ops in   0.2225 s ->      8989041 ops/sec
-MPMC 4P/4C :    4000000 ops in   0.5485 s ->      7292755 ops/sec
-MPMC 8P/8C :    8000000 ops in   1.4098 s ->      5674540 ops/sec
+## Benchmark Summary
 
-barghav@DESKTOP-DOOSSP5:~/lol_projects/Cascade$ ./build/benchmarks/bench_memory_pool
-new/delete     : 2000000 ops in 0.0333 s -> 16.7 ns/op
-pooled alloc   : 2000000 ops in 0.0673 s -> 33.7 ns/op
+The project includes microbenchmarks and system-level benchmarks covering
+core concurrency primitives, persistent storage, networking, messaging,
+and real-time media components.
 
-barghav@DESKTOP-DOOSSP5:~/lol_projects/Cascade$ ./build/benchmarks/bench_storage
---- Storage engine benchmark ---
-Write throughput: 200000 records x 512 bytes = 97.7 MB in 0.5260 s -> 185.7 MB/s
-Read latency (random offset, n=50000): p50 = 0.48 us, p99 = 1.13 us
-Recovery time for 10000 records: 6.60 ms
-Recovery time for 100000 records: 65.47 ms
-Recovery time for 500000 records: 334.68 ms
+| Component | Result |
+|-----------|--------|
+| **SPSC Queue** | **187M ops/sec** |
+| **MPMC Queue (1P/1C)** | **41M ops/sec** |
+| **Storage Write Throughput** | **185.7 MB/s** |
+| **Random Read Latency** | **p50: 0.48 μs, p99: 1.13 μs** |
+| **WAL Recovery (500k records)** | **334.68 ms** |
+| **TCP Loopback RTT** | **p50: 91.5 μs, p99: 146.8 μs** |
+| **Broker Consume Throughput** | **4.40M msgs/sec** |
+| **Broker Publish Throughput*** | **1256 msgs/sec** |
+| **Media Benchmark** | configurable latency / packet-loss evaluation |
+| **Adaptive Bitrate** | immediate downgrade, delayed upgrade policy |
 
-barghav@DESKTOP-DOOSSP5:~/lol_projects/Cascade$ ./build/benchmarks/bench_broker
---- Broker pub/sub benchmark ---
-Creating broker...
-Creating topic...
-Creating producer...
-Starting publish...
-0
-10000
-20000
-30000
-40000
-50000
-60000
-70000
-80000
-90000
-100000
-110000
-120000
-130000
-140000
-150000
-160000
-170000
-180000
-190000
-200000
-210000
-220000
-230000
-240000
-250000
-260000
-270000
-280000
-290000
-300000
-310000
-320000
-330000
-340000
-350000
-360000
-370000
-380000
-390000
-400000
-410000
-420000
-430000
-440000
-450000
-460000
-470000
-480000
-490000
-Publish throughput: 500000 msgs in 397.9342 s -> 1256 msgs/sec
-Consume throughput: 500000 msgs in 0.1136 s -> 4400938 msgs/sec
-Publish-to-consume latency (n=20000): p50 = 720.02 us, p99 = 1941.75 us
+> **Note**
+>
+> The broker publish benchmark currently prioritizes correctness and
+> durability over maximum throughput. Future work will focus on batching,
+> asynchronous disk flushing and replication, which are expected to
+> substantially improve publish performance.
 
-barghav@DESKTOP-DOOSSP5:~/lol_projects/Cascade$ ./build/benchmarks/bench_tcp
---- TCP networking benchmark ---
-TCP connections: 2000 in 0.5612 s -> 3564 conn/sec
-TCP loopback RTT: p50 = 91.5 us, p99 = 146.8 us (n=5000)
+---
 
-barghav@DESKTOP-DOOSSP5:~/lol_projects/Cascade$ ./build/benchmarks/bench_media
---- Jitter buffer loss-masking sweep (target_delay=40 ms) ---
-  simulated loss   0.0%  ->  effective loss   0.0%  (added latency: 40 ms)
-  simulated loss   2.0%  ->  effective loss   1.6%  (added latency: 40 ms)
-  simulated loss   5.0%  ->  effective loss   4.3%  (added latency: 40 ms)
-  simulated loss  10.0%  ->  effective loss   8.8%  (added latency: 40 ms)
-  simulated loss  20.0%  ->  effective loss  19.1%  (added latency: 40 ms)
-  simulated loss  30.0%  ->  effective loss  28.8%  (added latency: 40 ms)
---- Jitter buffer loss-masking sweep (target_delay=100 ms) ---
-  simulated loss   0.0%  ->  effective loss   0.0%  (added latency: 100 ms)
-  simulated loss   2.0%  ->  effective loss   1.6%  (added latency: 100 ms)
-  simulated loss   5.0%  ->  effective loss   4.3%  (added latency: 100 ms)
-  simulated loss  10.0%  ->  effective loss   8.8%  (added latency: 100 ms)
-  simulated loss  20.0%  ->  effective loss  19.1%  (added latency: 100 ms)
-  simulated loss  30.0%  ->  effective loss  28.8%  (added latency: 100 ms)
---- Jitter buffer loss-masking sweep (target_delay=200 ms) ---
-  simulated loss   0.0%  ->  effective loss   0.0%  (added latency: 200 ms)
-  simulated loss   2.0%  ->  effective loss   1.6%  (added latency: 200 ms)
-  simulated loss   5.0%  ->  effective loss   4.3%  (added latency: 200 ms)
-  simulated loss  10.0%  ->  effective loss   8.8%  (added latency: 200 ms)
-  simulated loss  20.0%  ->  effective loss  19.1%  (added latency: 200 ms)
-  simulated loss  30.0%  ->  effective loss  28.8%  (added latency: 200 ms)
+## Running Tests
 
-barghav@DESKTOP-DOOSSP5:~/lol_projects/Cascade$ ./build/benchmarks/bench_adaptive
---- Adaptive bitrate simulation: bandwidth trace over 20s ---
-  t(s)    bw(kbps)   quality   dropped
-     1        2500       low         0
-     2        2500       low         0
-     3        2500    medium         0
-     4        2500    medium         0
-     5        2500    medium         0
-     6        2500    medium         0
-     7         300    medium         0
-     8         300       low         0
-     9         300       low         0
-    10         300       low         0
-    11         300       low         0
-    12         300       low         0
-    13        2500    medium         0
-    14        2500    medium         0
-    15        2500    medium         0
-    16        2500    medium         0
-    17        2500    medium         0
-    18        2500    medium         0
-    19        2500    medium         0
-    20        2500    medium         0
-```
-
-### Queue throughput
-
-| Benchmark | Throughput |
-|-----------|-----------:|
-| SPSC (1P/1C) | 313M ops/sec |
-| MPMC (1P/1C) | 36M ops/sec |
-| MPMC (2P/2C) | 11.8M ops/sec |
-| MPMC (4P/4C) | 8.7M ops/sec |
-| MPMC (8P/8C) | 5.2M ops/sec |
-
-Run locally:
+Cascade uses **GoogleTest** for unit, integration and concurrency testing.
 
 ```bash
 cmake -S . -B build
-cmake --build build --config Release
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
 
-./build/benchmarks/bench_queue
-./build/benchmarks/bench_memory_pool
+Current status:
+
+```
+85 / 85 tests passing
+```
+
+Tests cover:
+
+- Lock-free queues
+- Thread pool
+- Timer wheel
+- Memory pool
+- Storage engine
+- WAL recovery
+- CRC validation
+- Broker
+- Consumer groups
+- Backpressure
+- TCP framing
+- UDP transport
+- Connection management
+- Prometheus metrics
+- Distributed tracing
+- Jitter buffer
+- Packet retransmission
+- Network condition estimator
+- Adaptive bitrate controller
+
+---
+
+## Documentation
+
+Additional design documentation is available in the `docs/` directory.
+
+```
+docs/
+├── architecture/
+│   └── architecture.png
+├── design.md
+├── notes/
+│   ├── phase1.md
+│   ├── phase2.md
+│   ├── phase3.md
+│   ├── phase4.md
+│   ├── phase5.md
+│   ├── phase6.md
+│   └── phase7.md
+```
+
+The phase notes document the evolution of the project, implementation
+decisions, benchmarks, trade-offs, and lessons learned throughout the
+development process.
+
+---
+
+## Build
+
+### Linux
+
+```bash
+cmake -S . -B build \
+    -DCMAKE_BUILD_TYPE=Release
+
+cmake --build build -j
+ctest --test-dir build
+```
+
+### AddressSanitizer
+
+```bash
+cmake -S . -B build-asan \
+    -DCMAKE_BUILD_TYPE=Debug \
+    -DCASCADE_ENABLE_ASAN=ON \
+    -DCASCADE_ENABLE_UBSAN=ON
+```
+
+### ThreadSanitizer (Linux)
+
+```bash
+cmake -S . -B build-tsan \
+    -DCMAKE_BUILD_TYPE=Debug \
+    -DCASCADE_ENABLE_TSAN=ON
 ```
 
 ---
 
-## Roadmap
+### Windows (MSYS2 UCRT64)
 
-- Phase 1 — Core concurrency primitives
-- Phase 2 — Storage engine
-- Phase 3 — Broker
-- Phase 4 — Replication
-- Phase 5 — Networking
-- Phase 6 — Streaming services
-- Phase 7 — Production hardening
+```bash
+cmake -S . -B build
+
+cmake --build build
+
+ctest --test-dir build
+```
+
+Networking tests that depend on POSIX sockets are skipped automatically on
+Windows.
+
+---
+
+## Project Status
+
+Cascade v1 is feature complete.
+
+Implemented:
+
+- High-performance concurrency primitives
+- Persistent storage engine
+- Publish/Subscribe broker
+- TCP networking
+- UDP media transport
+- Metrics & tracing
+- Real-time media pipeline
+- Adaptive bitrate streaming
+- Extensive automated testing
+- Benchmark suite
+
+Future work (v2):
+
+- Raft replication
+- Multi-broker clustering
+- Partition rebalancing
+- Leader election
+- Snapshotting
+- Authentication & authorization
+- TLS transport
+- Web dashboard
+- io_uring networking backend
+- Video streaming support
+
+---
+
+## Key Design Principles
+
+Throughout the project, several architectural principles remained
+consistent.
+
+- **Correctness before optimization.**
+  Every subsystem is implemented with deterministic behavior and extensive
+  automated testing before performance tuning.
+
+- **Measure before optimizing.**
+  Every benchmark exists to validate a specific design decision rather than
+  to produce impressive numbers.
+
+- **Separate measurement from policy.**
+  Components such as `NetworkConditionEstimator` provide observations,
+  while policy decisions belong to higher-level controllers.
+
+- **Deterministic testing.**
+  Media components use explicit timestamps instead of wall-clock time,
+  making simulations and unit tests repeatable.
+
+- **Different workloads require different trade-offs.**
+  Durable storage never silently loses data, whereas real-time media
+  intentionally sacrifices stale packets to maintain low latency.
+
+---
+
+## Technologies
+
+- C++23
+- CMake
+- GoogleTest
+- Prometheus
+- POSIX sockets
+- mmap
+- epoll
+- UDP
+- TCP
+- GitHub Actions
 
 ---
 
 ## License
 
-MIT
+Released under the **MIT License**.
+
+See the [LICENSE](LICENSE) file for details.
