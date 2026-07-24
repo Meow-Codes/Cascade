@@ -51,7 +51,10 @@ public:
         }
     }
     
-    void attach_metrics(metrics::MetricsRegistry& registry) { metrics_ = &registry; }
+    void attach_metrics(metrics::MetricsRegistry& registry) {
+        metrics_ = &registry;
+        consume_counter_ = &registry.counter("cascade_consume_total");
+    }
 
     // Reads up to max_records total across all assigned partitions,
     // advancing in-memory cursors (not yet persisted -- call commit()
@@ -68,7 +71,9 @@ public:
             }
             if (results.size() >= max_records) break;
         }
-        if (metrics_ && !results.empty()) metrics_->counter("cascade_consume_total").inc(results.size());
+        if (consume_counter_ && !results.empty()){
+            consume_counter_->inc(results.size());
+        }
         return results;
     }
 
@@ -86,6 +91,7 @@ private:
     OffsetStore& offset_store_;
     std::unordered_map<int, std::uint64_t> cursors_;
     metrics::MetricsRegistry* metrics_ = nullptr;
+    metrics::Counter* consume_counter_ = nullptr;
 };
 
 } // namespace cascade::core::broker
