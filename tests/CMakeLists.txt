@@ -19,6 +19,12 @@ set(TEST_SOURCES
     test_metrics_http_server.cpp
     test_tracing.cpp
     test_metrics_overhead.cpp
+    test_audio_packet_codec.cpp
+    test_silence_detector.cpp
+    test_retransmit_cache.cpp
+    test_priority_queue.cpp
+    test_jitter_buffer.cpp
+    test_audio_session_udp.cpp
 )
 
 # Linux/POSIX networking tests
