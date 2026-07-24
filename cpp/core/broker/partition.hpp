@@ -42,8 +42,11 @@ public:
 
     void attach_metrics(metrics::MetricsRegistry& registry) {
         metrics_ = &registry;
-        publish_latency_ = &registry.histogram("cascade_publish_latency_us",
-            {10, 25, 50, 100, 250, 500, 1000, 5000, 10000});
+        publish_counter_ =
+            &registry.counter("cascade_publish_total");
+        publish_latency_ =
+            &registry.histogram("cascade_publish_latency_us",
+                {10,25,50,100,250,500,1000,5000,10000});
     }
 
     std::optional<std::uint64_t> try_publish(const std::uint8_t* payload, std::uint32_t len) {
@@ -57,8 +60,8 @@ public:
         if (flush_policy_ == FlushPolicy::PerMessage)
             log_.flush();
 
-        if (metrics_) {
-            metrics_->counter("cascade_publish_total").inc();
+        if (publish_counter_) {
+            publish_counter_->inc();
             auto t1 = std::chrono::steady_clock::now();
             publish_latency_->observe(
                 std::chrono::duration<double, std::micro>(t1 - t0).count());
@@ -103,6 +106,7 @@ private:
     FlushPolicy flush_policy_;
 
     metrics::MetricsRegistry* metrics_ = nullptr;
+    metrics::Counter* publish_counter_ = nullptr;
     metrics::Histogram* publish_latency_ = nullptr;
 };
 
