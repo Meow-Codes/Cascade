@@ -98,16 +98,18 @@ var ErrNoLeaderElected = errors.New("no leader elected within timeout")
 // use leader-hint responses from RPCs instead of polling raft state
 // directly (see Propose's ErrNotLeader note below).
 func WaitForLeader(nodes []*Node, timeout time.Duration) (string, error) {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		for _, n := range nodes {
-			if leader := n.Raft.Leader(); leader != "" {
-				return string(leader), nil
-			}
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	return "", ErrNoLeaderElected
+    deadline := time.Now().Add(timeout)
+
+    for time.Now().Before(deadline) {
+        for _, n := range nodes {
+            if n.Raft.State() == raft.Leader {
+                return n.ID, nil
+            }
+        }
+        time.Sleep(10 * time.Millisecond)
+    }
+
+    return "", ErrNoLeaderElected
 }
 
 func (n *Node) IsLeader() bool { return n.Raft.State() == raft.Leader }
