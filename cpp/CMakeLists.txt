@@ -11,3 +11,6 @@ target_link_libraries(cascade_core INTERFACE Threads::Threads)
 
 add_subdirectory(core/controlplane)
 target_link_libraries(cascade_core INTERFACE cascade_controlplane_client)
+
+find_library(URING_LIB uring REQUIRED)
+target_link_libraries(cascade_core INTERFACE ${URING_LIB})

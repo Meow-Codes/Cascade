@@ -24,6 +24,7 @@
 
 namespace cascade::core::net {
 
+template <typename LoopT>
 class TcpServer {
 public:
     using ConnectionId = int; // fd doubles as connection id for v1 simplicity
@@ -31,7 +32,7 @@ public:
     using OnMessage = std::function<void(ConnectionId, const std::vector<std::uint8_t>& payload)>;
     using OnDisconnect = std::function<void(ConnectionId)>;
 
-    TcpServer(EpollLoop& loop, const std::string& bind_ip, std::uint16_t port)
+    TcpServer(LoopT& loop, const std::string& bind_ip, std::uint16_t port)
         : loop_(loop) {
         int fd = ::socket(AF_INET, SOCK_STREAM, 0);
         if (fd < 0) throw std::runtime_error(std::string("socket() failed: ") + std::strerror(errno));
@@ -152,7 +153,7 @@ private:
         if (on_disconnect_) on_disconnect_(fd);
     }
 
-    EpollLoop& loop_;
+    LoopT& loop_;
     FileDescriptor listen_fd_;
     std::unordered_map<int, Connection> connections_;
 

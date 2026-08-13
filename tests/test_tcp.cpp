@@ -28,11 +28,11 @@ private:
 
 TEST(TcpLoopback, SendReceiveCorrectness) {
     EpollLoop loop;
-    TcpServer server(loop, "127.0.0.1", 18080);
+    TcpServer<EpollLoop> server(loop, "127.0.0.1", 18080);
 
     std::atomic<bool> got_message{false};
     std::vector<std::uint8_t> received;
-    server.set_on_message([&](TcpServer::ConnectionId, const std::vector<std::uint8_t>& payload) {
+    server.set_on_message([&](TcpServer<EpollLoop>::ConnectionId, const std::vector<std::uint8_t>& payload) {
         received = payload;
         got_message.store(true);
     });
@@ -54,10 +54,10 @@ TEST(TcpLoopback, SendReceiveCorrectness) {
 
 TEST(TcpLoopback, ServerDetectsAbruptDisconnect) {
     EpollLoop loop;
-    TcpServer server(loop, "127.0.0.1", 18081);
+    TcpServer<EpollLoop> server(loop, "127.0.0.1", 18081);
 
     std::atomic<bool> disconnected{false};
-    server.set_on_disconnect([&](TcpServer::ConnectionId) { disconnected.store(true); });
+    server.set_on_disconnect([&](TcpServer<EpollLoop>::ConnectionId) { disconnected.store(true); });
 
     LoopRunner runner(loop);
 

@@ -14,9 +14,9 @@ using Clock = std::chrono::steady_clock;
 
 static void bench_connections_per_sec(int total_connections) {
     EpollLoop loop;
-    TcpServer server(loop, "127.0.0.1", 28080);
+    TcpServer<EpollLoop> server(loop, "127.0.0.1", 28080);
     std::atomic<int> accepted{0};
-    server.set_on_connect([&](TcpServer::ConnectionId, const std::string&) {
+    server.set_on_connect([&](TcpServer<EpollLoop>::ConnectionId, const std::string&) {
         accepted.fetch_add(1, std::memory_order_relaxed);
     });
 
@@ -46,8 +46,8 @@ static void bench_connections_per_sec(int total_connections) {
 
 static void bench_rtt_latency(int iterations) {
     EpollLoop loop;
-    TcpServer server(loop, "127.0.0.1", 28081);
-    server.set_on_message([&](TcpServer::ConnectionId id, const std::vector<std::uint8_t>& payload) {
+    TcpServer<EpollLoop> server(loop, "127.0.0.1", 28081);
+    server.set_on_message([&](TcpServer<EpollLoop>::ConnectionId id, const std::vector<std::uint8_t>& payload) {
         server.send(id, payload.data(), static_cast<std::uint32_t>(payload.size())); // echo
     });
 

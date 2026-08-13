@@ -18,3 +18,6 @@ target_link_libraries(bench_media PRIVATE cascade_core)
 
 add_executable(bench_adaptive bench_adaptive.cpp)
 target_link_libraries(bench_adaptive PRIVATE cascade_core)
+
+add_executable(bench_epoll_vs_iouring bench_epoll_vs_iouring.cpp)
+target_link_libraries(bench_epoll_vs_iouring PRIVATE cascade_core uring)
