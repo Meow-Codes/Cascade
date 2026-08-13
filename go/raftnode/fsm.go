@@ -68,7 +68,7 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 		if ok := f.Membership.Heartbeat(cmd.BrokerID); !ok {
 			return ApplyResult{Err: fmt.Errorf("heartbeat on unregistered broker: %s", cmd.BrokerID)}
 		}
-		return ApplyResult{Err: nil}\
+		return ApplyResult{Err: nil}
 	case CmdIncrementCounter:
 		f.counterMu.Lock()
 		f.counter++
