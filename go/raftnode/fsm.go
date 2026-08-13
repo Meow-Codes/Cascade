@@ -58,6 +58,8 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 		return ApplyResult{Err: fmt.Errorf("malformed command: %w", err)}
 	}
 
+	// fmt.Printf("Apply on %p\n", f)
+
 	switch cmd.Kind {
 	case CmdCreateTopic:
 		return ApplyResult{Err: f.Metadata.CreateTopic(cmd.TopicName, cmd.NumPartitions)}
@@ -72,6 +74,7 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 	case CmdIncrementCounter:
 		f.counterMu.Lock()
 		f.counter++
+		// fmt.Println("counter =", f.counter)
 		newVal := f.counter
 		f.counterMu.Unlock()
 		return ApplyResult{Value: newVal}
@@ -106,6 +109,7 @@ func (f *FSM) Restore(rc io.ReadCloser) error {
 	if err := json.NewDecoder(rc).Decode(&snap); err != nil {
 		return err
 	}
+	fmt.Println("Restore called")
 	f.Metadata.RestoreTopics(snap.Topics)
 	f.Membership.RestoreBrokers(snap.Brokers)
 

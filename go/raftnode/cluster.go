@@ -20,7 +20,10 @@ type Node struct {
 	Raft      *raft.Raft
 	FSM       *FSM
 	ID        string
-	Transport *raft.InmemTransport // exposed so tests can simulate network partitions
+	Transport *raft.InmemTransport // nil for disk-backed (	) nodes -- partition
+	                                 // simulation (Partition/Heal) only applies to the
+	                                 // in-memory test cluster from Phase 9, not to these.
+	closeFns  []func() error
 }
 
 func newConfig(id string) *raft.Config {
@@ -46,6 +49,21 @@ func newConfig(id string) *raft.Config {
 	return cfg
 }
 
+// Close cleanly shuts down raft and releases any owned resources (open
+// BoltDB file, TCP listener, etc.) for disk-backed nodes. Safe to call
+// on in-memory nodes too (closeFns is simply empty there).
+func (n *Node) Close() error {
+	if err := n.Raft.Shutdown().Error(); err != nil {
+		return fmt.Errorf("raft shutdown: %w", err)
+	}
+	for _, fn := range n.closeFns {
+		if err := fn(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func NewInmemNode(id string, transport *raft.InmemTransport) (*Node, error) {
 	fsm := &FSM{
 		Metadata:   controlplane.NewMetadataStore(),
@@ -57,6 +75,7 @@ func NewInmemNode(id string, transport *raft.InmemTransport) (*Node, error) {
 	snapshotStore := raft.NewInmemSnapshotStore()
 
 	r, err := raft.NewRaft(newConfig(id), fsm, logStore, stableStore, snapshotStore, transport)
+	// fmt.Println("counter after NewRaft:", fsm.CurrentCounter())
 	if err != nil {
 		return nil, fmt.Errorf("raft.NewRaft(%s): %w", id, err)
 	}
