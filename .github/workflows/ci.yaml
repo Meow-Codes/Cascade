@@ -17,13 +17,14 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y \
-          ninja-build \
-          cmake \
-          g++ \
-          protobuf-compiler \
-          libprotobuf-dev \
-          libre2-dev \
-          pkg-config
+            ninja-build \
+            cmake \
+            g++ \
+            protobuf-compiler \
+            libprotobuf-dev \
+            libgrpc++-dev \
+            protobuf-compiler-grpc \
+            pkg-config
 
       - name: Configure
         run: cmake -S . -B build -G Ninja
@@ -44,11 +45,14 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y \
-          clang \
-          ninja-build \
-          cmake \
-          protobuf-compiler \
-          libprotobuf-dev
+            clang \
+            ninja-build \
+            cmake \
+            protobuf-compiler \
+            libprotobuf-dev \
+            libgrpc++-dev \
+            protobuf-compiler-grpc \
+            pkg-config
 
       - name: Configure
         run: |

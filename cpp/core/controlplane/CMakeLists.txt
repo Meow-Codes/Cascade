@@ -1,5 +1,7 @@
 find_package(Protobuf REQUIRED)
-find_package(gRPC REQUIRED)
+find_package(PkgConfig REQUIRED)
+
+pkg_check_modules(GRPC REQUIRED grpc++)
 
 set(PROTO_FILE ${CMAKE_SOURCE_DIR}/go/proto/cascade.proto)
 set(GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated)
@@ -26,7 +28,18 @@ add_custom_command(
 
 add_library(cascade_controlplane_proto STATIC ${PROTO_SRCS} ${GRPC_SRCS})
 target_include_directories(cascade_controlplane_proto PUBLIC ${GENERATED_DIR})
-target_link_libraries(cascade_controlplane_proto PUBLIC protobuf::libprotobuf gRPC::grpc++)
+target_include_directories(cascade_controlplane_proto
+    PUBLIC
+        ${GENERATED_DIR}
+        ${GRPC_INCLUDE_DIRS}
+)
+
+target_link_libraries(cascade_controlplane_proto
+    PUBLIC
+        protobuf::libprotobuf
+        ${GRPC_LIBRARIES}
+)
+target_compile_options(cascade_controlplane_proto PRIVATE ${GRPC_CFLAGS_OTHER})
 
 add_library(cascade_controlplane_client INTERFACE)
 target_sources(cascade_controlplane_client INTERFACE control_plane_client.hpp)
