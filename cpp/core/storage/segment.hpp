@@ -33,6 +33,7 @@
 
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <fcntl.h>
 #include <unistd.h>
 
@@ -46,6 +47,7 @@
 #include <vector>
 
 #include "storage/crc32.hpp"
+#include "net/zero_copy_transfer.hpp"
 
 namespace cascade::core::storage {
 
@@ -157,6 +159,19 @@ public:
             pos += kRecordHeaderSize + len;
         }
         return std::nullopt;
+    }
+
+    // Zero-copy transfer of this segment's raw bytes (records AND their
+    // headers, as stored on disk) directly to a socket fd via sendfile(2).
+    // Intended for bulk historical catch-up reads, not the normal read_from()
+    // path -- callers get raw framed record bytes, not parsed ReadResults,
+    // so this is meant to pair with a receiver that already knows this
+    // wire format (e.g. a future replication/bulk-sync feature), not a
+    // general-purpose "read me record N" API.
+    std::size_t sendfile_range(int socket_fd, std::size_t start_pos, std::size_t length) const {
+        off_t offset = static_cast<off_t>(start_pos);
+        std::size_t clamped_len = std::min(length, write_pos_ - start_pos);
+        return net::send_file_range(socket_fd, fd_, &offset, clamped_len);
     }
 
     // Binary search over the sparse index for the best scan-start position

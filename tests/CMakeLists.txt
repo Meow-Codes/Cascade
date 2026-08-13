@@ -29,6 +29,7 @@ set(TEST_SOURCES
     test_bitrate_controller.cpp
     test_adaptive_sender.cpp
     test_io_uring_loop.cpp
+    test_zero_copy_transfer.cpp
 )
 
 # Linux/POSIX networking tests
