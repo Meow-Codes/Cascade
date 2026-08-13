@@ -1,0 +1,4 @@
+--- Broker pub/sub benchmark ---
+Publish throughput: 500000 msgs in 0.2482 s -> 2014209 msgs/sec
+Consume throughput: 500000 msgs in 0.0663 s -> 7545395 msgs/sec
+Publish-to-consume latency (n=20000): p50 = 0.34 us, p99 = 0.53 us
