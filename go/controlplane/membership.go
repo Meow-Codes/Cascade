@@ -20,10 +20,10 @@ type BrokerRecord struct {
 }
 
 type Membership struct {
-	mu       sync.RWMutex
-	brokers  map[string]*BrokerRecord
-	clock    Clock
-	timeout  time.Duration
+	mu      sync.RWMutex
+	brokers map[string]*BrokerRecord
+	clock   Clock
+	timeout time.Duration
 }
 
 func NewMembership(clock Clock, timeout time.Duration) *Membership {

@@ -54,8 +54,8 @@ func (s *Server) ListBrokers(_ context.Context, _ *pb.Empty) (*pb.ListBrokersRes
 	for _, st := range statuses {
 		out = append(out, &pb.BrokerInfo{
 			BrokerId:            st.BrokerID,
-			Address:              st.Address,
-			Alive:                 st.Alive,
+			Address:             st.Address,
+			Alive:               st.Alive,
 			LastHeartbeatUnixMs: st.LastHeartbeatUnix,
 		})
 	}
