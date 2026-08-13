@@ -89,12 +89,14 @@ func (f *FSM) CurrentCounter() int64 {
 type fsmSnapshot struct {
 	Topics  []*pb.Topic                        `json:"topics"`
 	Brokers []controlplane.BrokerSnapshotEntry `json:"brokers"`
+	Counter int64                              `json:"counter"`
 }
 
 func (f *FSM) Snapshot() (raft.FSMSnapshot, error) {
 	return &fsmSnapshot{
 		Topics:  f.Metadata.SnapshotTopics(),
 		Brokers: f.Membership.SnapshotBrokers(),
+		Counter: f.CurrentCounter(),
 	}, nil
 }
 
@@ -106,6 +108,11 @@ func (f *FSM) Restore(rc io.ReadCloser) error {
 	}
 	f.Metadata.RestoreTopics(snap.Topics)
 	f.Membership.RestoreBrokers(snap.Brokers)
+
+	f.counterMu.Lock()
+	f.counter = snap.Counter
+	f.counterMu.Unlock()
+
 	return nil
 }
 

@@ -26,13 +26,23 @@ type Node struct {
 func newConfig(id string) *raft.Config {
 	cfg := raft.DefaultConfig()
 	cfg.LocalID = raft.ServerID(id)
-	// Short timeouts so tests/demos don't wait on raft's normal
-	// multi-second production election timers.
 	cfg.HeartbeatTimeout = 100 * time.Millisecond
 	cfg.ElectionTimeout = 100 * time.Millisecond
 	cfg.LeaderLeaseTimeout = 50 * time.Millisecond
 	cfg.CommitTimeout = 10 * time.Millisecond
-	cfg.LogOutput = io.Discard // raft's internal logging is noisy at test scale; silence it
+	cfg.LogOutput = io.Discard
+
+	// Phase 10: small TrailingLogs so a manually-forced Snapshot() actually
+	// trims old log entries afterward, instead of raft's large default
+	// (10240) keeping everything around indefinitely. This is what makes
+	// "does a new replica catch up via InstallSnapshot vs. full log
+	// replication" an honestly testable, deterministic property at this
+	// project's small test scale, rather than an assumption. A real
+	// production deployment would use the default (or larger) --
+	// documented here as a test-scale tradeoff, same category as the
+	// fast election timeouts above.
+	cfg.TrailingLogs = 10
+	cfg.SnapshotThreshold = 20
 	return cfg
 }
 
