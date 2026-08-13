@@ -16,7 +16,14 @@ jobs:
       - name: Install tools
         run: |
           sudo apt update
-          sudo apt install -y ninja-build cmake g++
+          sudo apt install -y \
+          ninja-build \
+          cmake \
+          g++ \
+          protobuf-compiler \
+          libprotobuf-dev \
+          libre2-dev \
+          pkg-config
 
       - name: Configure
         run: cmake -S . -B build -G Ninja
@@ -36,7 +43,12 @@ jobs:
       - name: Install Clang
         run: |
           sudo apt update
-          sudo apt install -y clang ninja-build cmake
+          sudo apt install -y \
+          clang \
+          ninja-build \
+          cmake \
+          protobuf-compiler \
+          libprotobuf-dev
 
       - name: Configure
         run: |
