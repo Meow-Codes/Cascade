@@ -17,9 +17,10 @@ import (
 // add an equivalent NewTCPNode using raft.NewTCPTransport, sharing the
 // same FSM/config wiring so there's exactly one code path to get right.
 type Node struct {
-	Raft *raft.Raft
-	FSM  *FSM
-	ID   string
+	Raft      *raft.Raft
+	FSM       *FSM
+	ID        string
+	Transport *raft.InmemTransport // exposed so tests can simulate network partitions
 }
 
 func newConfig(id string) *raft.Config {
@@ -49,7 +50,7 @@ func NewInmemNode(id string, transport *raft.InmemTransport) (*Node, error) {
 	if err != nil {
 		return nil, fmt.Errorf("raft.NewRaft(%s): %w", id, err)
 	}
-	return &Node{Raft: r, FSM: fsm, ID: id}, nil
+	return &Node{Raft: r, FSM: fsm, ID: id, Transport: transport}, nil
 }
 
 // BootstrapInmemCluster creates a fully-connected N-node cluster over

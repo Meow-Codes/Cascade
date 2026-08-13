@@ -9,6 +9,7 @@ import (
 	pb "cascade/gen/cascadepb"
 
 	"github.com/hashicorp/raft"
+	"sync"
 )
 
 // FSM applies replicated commands to the same MetadataStore/Membership
@@ -18,14 +19,18 @@ import (
 type FSM struct {
 	Metadata   *controlplane.MetadataStore
 	Membership *controlplane.Membership
+
+	counterMu sync.Mutex
+	counter   int64
 }
 
 type CommandKind string
 
 const (
-	CmdCreateTopic    CommandKind = "create_topic"
-	CmdRegisterBroker CommandKind = "register_broker"
-	CmdHeartbeat      CommandKind = "heartbeat"
+	CmdCreateTopic       CommandKind = "create_topic"
+	CmdRegisterBroker    CommandKind = "register_broker"
+	CmdHeartbeat         CommandKind = "heartbeat"
+	CmdIncrementCounter  CommandKind = "increment_counter"
 )
 
 type Command struct {
@@ -44,6 +49,7 @@ func EncodeCommand(c Command) ([]byte, error) { return json.Marshal(c) }
 // (e.g. duplicate topic), which is what this carries.
 type ApplyResult struct {
 	Err error
+	Value int64 // populated by CmdIncrementCounter: the counter's new value after this op
 }
 
 func (f *FSM) Apply(log *raft.Log) interface{} {
@@ -62,10 +68,22 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 		if ok := f.Membership.Heartbeat(cmd.BrokerID); !ok {
 			return ApplyResult{Err: fmt.Errorf("heartbeat on unregistered broker: %s", cmd.BrokerID)}
 		}
-		return ApplyResult{Err: nil}
+		return ApplyResult{Err: nil}\
+	case CmdIncrementCounter:
+		f.counterMu.Lock()
+		f.counter++
+		newVal := f.counter
+		f.counterMu.Unlock()
+		return ApplyResult{Value: newVal}
 	default:
 		return ApplyResult{Err: fmt.Errorf("unknown command kind: %s", cmd.Kind)}
 	}
+}
+
+func (f *FSM) CurrentCounter() int64 {
+	f.counterMu.Lock()
+	defer f.counterMu.Unlock()
+	return f.counter
 }
 
 type fsmSnapshot struct {
