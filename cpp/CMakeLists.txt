@@ -8,3 +8,6 @@ target_compile_features(cascade_core INTERFACE cxx_std_23)
 
 find_package(Threads REQUIRED)
 target_link_libraries(cascade_core INTERFACE Threads::Threads)
+
+add_subdirectory(core/controlplane)
+target_link_libraries(cascade_core INTERFACE cascade_controlplane_client)

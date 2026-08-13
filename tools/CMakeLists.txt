@@ -3,3 +3,6 @@ target_link_libraries(wal_kill_writer PRIVATE cascade_core)
 
 add_executable(wal_verifier wal_verifier.cpp)
 target_link_libraries(wal_verifier PRIVATE cascade_core)
+
+add_executable(broker_register_tool broker_register_tool.cpp)
+target_link_libraries(broker_register_tool PRIVATE cascade_core)
