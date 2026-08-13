@@ -40,9 +40,16 @@ if(UNIX AND NOT WIN32)
 endif()
 
 add_executable(cascade_tests ${TEST_SOURCES})
+add_executable(cascade_integration_tests test_broker_control_plane_integration.cpp)
 
 target_link_libraries(cascade_tests PRIVATE cascade_core gtest_main)
 target_include_directories(cascade_tests PRIVATE ${CMAKE_SOURCE_DIR}/cpp/core)
+target_link_libraries(cascade_integration_tests PRIVATE cascade_core gtest_main)
+target_include_directories(cascade_integration_tests PRIVATE ${CMAKE_SOURCE_DIR}/cpp/core)
+# Deliberately NOT calling gtest_discover_tests() here -- this keeps it
+# out of the default `ctest` run, which must stay runnable with zero
+# external dependencies (Go server, network) per every prior phase's
+# testing philosophy in this project.
 
 include(GoogleTest)
 gtest_add_tests(TARGET cascade_tests)
