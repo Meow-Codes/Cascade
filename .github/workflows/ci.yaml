@@ -24,6 +24,7 @@ jobs:
             libprotobuf-dev \
             libgrpc++-dev \
             protobuf-compiler-grpc \
+            liburing-dev \
             pkg-config
 
       - name: Configure
@@ -52,6 +53,7 @@ jobs:
             libprotobuf-dev \
             libgrpc++-dev \
             protobuf-compiler-grpc \
+            liburing-dev \
             pkg-config
 
       - name: Configure
