@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package cascade.v1;
+option go_package = "cascade/gen/cascadepb";
+
+// CascadeControlPlane is the Go-side metadata/membership authority. The
+// C++ brokers are gRPC CLIENTS of this service (register themselves,
+// heartbeat, and eventually in Phase 9 receive leader/replica role
+// assignments) -- the control plane never calls into a broker directly,
+// only reacts to what brokers report, keeping the coupling one-directional.
+service CascadeControlPlane {
+  rpc CreateTopic(CreateTopicRequest) returns (CreateTopicResponse);
+  rpc ListTopics(Empty) returns (ListTopicsResponse);
+
+  rpc RegisterBroker(RegisterBrokerRequest) returns (RegisterBrokerResponse);
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  rpc ListBrokers(Empty) returns (ListBrokersResponse);
+}
+
+message Empty {}
+
+message Topic {
+  string name = 1;
+  int32 num_partitions = 2;
+}
+
+message CreateTopicRequest {
+  string name = 1;
+  int32 num_partitions = 2;
+}
+message CreateTopicResponse {
+  bool created = 1;
+  string error = 2; // empty on success
+}
+
+message ListTopicsResponse {
+  repeated Topic topics = 1;
+}
+
+message RegisterBrokerRequest {
+  string broker_id = 1;
+  string address = 2; // host:port the broker's data-plane listens on
+}
+message RegisterBrokerResponse {
+  bool registered = 1;
+}
+
+message HeartbeatRequest {
+  string broker_id = 1;
+}
+message HeartbeatResponse {
+  bool acknowledged = 1;
+}
+
+message BrokerInfo {
+  string broker_id = 1;
+  string address = 2;
+  bool alive = 3;
+  int64 last_heartbeat_unix_ms = 4;
+}
+message ListBrokersResponse {
+  repeated BrokerInfo brokers = 1;
+}
