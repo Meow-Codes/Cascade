@@ -38,4 +38,5 @@ build.ninja
 Thumbs.db
 
 # Logs
-*.log
+*.logperf_broker.data
+perf_broker.data

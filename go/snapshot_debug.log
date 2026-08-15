@@ -1,0 +1,49 @@
+=== RUN   TestSnapshot_NewReplicaCatchesUpViaSnapshotNotFullLogReplay
+2026-08-13T21:40:20.536Z [INFO]  raft: initial configuration: index=0 servers=[]
+2026-08-13T21:40:20.536Z [INFO]  raft: initial configuration: index=0 servers=[]
+2026-08-13T21:40:20.536Z [INFO]  raft: initial configuration: index=0 servers=[]
+2026-08-13T21:40:20.536Z [INFO]  raft: entering follower state: follower="Node at n3 [Follower]" leader-address= leader-id=
+2026-08-13T21:40:20.536Z [INFO]  raft: entering follower state: follower="Node at n1 [Follower]" leader-address= leader-id=
+2026-08-13T21:40:20.536Z [INFO]  raft: entering follower state: follower="Node at n2 [Follower]" leader-address= leader-id=
+2026-08-13T21:40:20.645Z [WARN]  raft: no known peers, aborting election
+2026-08-13T21:40:20.651Z [WARN]  raft: heartbeat timeout reached, starting election: last-leader-addr= last-leader-id=
+2026-08-13T21:40:20.651Z [INFO]  raft: entering candidate state: node="Node at n1 [Candidate]" term=2
+2026-08-13T21:40:20.651Z [DEBUG] raft: voting for self: term=2 id=n1
+2026-08-13T21:40:20.651Z [DEBUG] raft: asking for vote: term=2 from=n2 address=n2
+2026-08-13T21:40:20.651Z [DEBUG] raft: asking for vote: term=2 from=n3 address=n3
+2026-08-13T21:40:20.651Z [DEBUG] raft: lost leadership because received a requestVote with a newer term
+2026-08-13T21:40:20.652Z [DEBUG] raft: lost leadership because received a requestVote with a newer term
+2026-08-13T21:40:20.652Z [DEBUG] raft: calculated votes needed: needed=2 term=2
+2026-08-13T21:40:20.652Z [DEBUG] raft: vote granted: from=n1 term=2 tally=1
+2026-08-13T21:40:20.652Z [DEBUG] raft: vote granted: from=n3 term=2 tally=2
+2026-08-13T21:40:20.652Z [INFO]  raft: election won: term=2 tally=2
+2026-08-13T21:40:20.652Z [INFO]  raft: entering leader state: leader="Node at n1 [Leader]"
+2026-08-13T21:40:20.652Z [INFO]  raft: added peer, starting replication: peer=n2
+2026-08-13T21:40:20.652Z [INFO]  raft: added peer, starting replication: peer=n3
+2026-08-13T21:40:20.652Z [WARN]  raft: failed to get previous log: previous-index=1 last-index=0 error="log not found"
+2026-08-13T21:40:20.652Z [WARN]  raft: failed to get previous log: previous-index=1 last-index=0 error="log not found"
+2026-08-13T21:40:20.652Z [WARN]  raft: appendEntries rejected, sending older logs: peer="{Voter n2 n2}" next=1
+2026-08-13T21:40:20.652Z [WARN]  raft: appendEntries rejected, sending older logs: peer="{Voter n3 n3}" next=1
+2026-08-13T21:40:20.652Z [INFO]  raft: pipelining replication: peer="{Voter n2 n2}"
+2026-08-13T21:40:20.652Z [INFO]  raft: pipelining replication: peer="{Voter n3 n3}"
+2026-08-13T21:40:20.653Z [INFO]  raft: starting snapshot up to: index=52
+2026-08-13T21:40:20.654Z [INFO]  raft: compacting logs: from=1 to=42
+2026-08-13T21:40:20.654Z [INFO]  raft: snapshot complete up to: index=52
+    snapshot_test.go:37: map[applied_index:52 commit_index:52 fsm_pending:0 last_contact:0 last_log_index:52 last_log_term:2 last_snapshot_index:52 last_snapshot_term:2 latest_configuration:[{Suffrage:Voter ID:n1 Address:n1} {Suffrage:Voter ID:n2 Address:n2} {Suffrage:Voter ID:n3 Address:n3}] latest_configuration_index:0 num_peers:2 protocol_version:3 protocol_version_max:3 protocol_version_min:0 snapshot_version_max:1 snapshot_version_min:0 state:Leader term:2]
+2026-08-13T21:40:20.654Z [INFO]  raft: initial configuration: index=0 servers=[]
+2026-08-13T21:40:20.654Z [INFO]  raft: updating configuration: command=AddVoter server-id=n4 server-addr=n4 servers="[{Suffrage:Voter ID:n1 Address:n1} {Suffrage:Voter ID:n2 Address:n2} {Suffrage:Voter ID:n3 Address:n3} {Suffrage:Voter ID:n4 Address:n4}]"
+2026-08-13T21:40:20.654Z [INFO]  raft: added peer, starting replication: peer=n4
+2026-08-13T21:40:20.654Z [INFO]  raft: entering follower state: follower="Node at n4 [Follower]" leader-address= leader-id=
+2026-08-13T21:40:20.654Z [WARN]  raft: failed to get previous log: previous-index=53 last-index=0 error="log not found"
+2026-08-13T21:40:20.654Z [WARN]  raft: appendEntries rejected, sending older logs: peer="{Voter n4 n4}" next=1
+2026-08-13T21:40:20.654Z [ERROR] raft: failed to get log: index=1 error="log not found"
+2026-08-13T21:40:20.654Z [INFO]  raft: snapshot network transfer progress: read-bytes=26 percent-complete="100.00%"
+2026-08-13T21:40:20.654Z [INFO]  raft: copied to local snapshot: bytes=26
+2026-08-13T21:40:20.654Z [INFO]  raft: snapshot restore progress: id=2-52-1786657220654 last-index=52 last-term=2 size-in-bytes=26 read-bytes=26 percent-complete="100.00%"
+2026-08-13T21:40:20.654Z [INFO]  raft: Installed remote snapshot
+2026-08-13T21:40:20.654Z [INFO]  raft: pipelining replication: peer="{Voter n4 n4}"
+    snapshot_test.go:61: new node did not catch up: got 1, want 50
+--- FAIL: TestSnapshot_NewReplicaCatchesUpViaSnapshotNotFullLogReplay (3.12s)
+FAIL
+FAIL	cascade/raftnode_test	3.128s
+FAIL
