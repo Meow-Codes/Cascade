@@ -16,6 +16,7 @@
 #include <string>
 
 #include "broker/topic.hpp"
+#include "broker/consistent_hash.hpp"
 
 namespace cascade::core::broker {
 
@@ -42,6 +43,21 @@ public:
         return {p, offset};
     }
 
+    // NEW: consistent-hash-based keyed publish. publish_keyed() (modulo-based)
+    // is UNCHANGED and still the default -- this is an explicit opt-in for
+    // callers who care about minimal key remapping across partition-count
+    // changes, since it costs a bit more (ring lookup vs a modulo) and most
+    // single-broker v1 usage never resizes partition count anyway.
+    PublishResult publish_keyed_consistent(const std::string& key, const std::uint8_t* payload, std::uint32_t len) {
+        if (!hash_ring_) {
+            hash_ring_ = std::make_unique<ConsistentHashRing>();
+            for (int p = 0; p < topic_->num_partitions(); ++p) hash_ring_->add_partition(p);
+        }
+        int p = hash_ring_->partition_for(key);
+        auto offset = topic_->partition(p)->publish(payload, len);
+        return {p, offset};
+    }
+
     // Non-blocking variant so callers (and tests) can observe backpressure
     // explicitly rather than block on it.
     std::optional<PublishResult> try_publish(int partition, const std::uint8_t* payload, std::uint32_t len) {
@@ -53,6 +69,7 @@ public:
 private:
     std::shared_ptr<Topic> topic_;
     std::atomic<std::uint64_t> round_robin_{0};
+    std::unique_ptr<ConsistentHashRing> hash_ring_; // lazy init on first publish_keyed_consistent()
 };
 
 } // namespace cascade::core::broker

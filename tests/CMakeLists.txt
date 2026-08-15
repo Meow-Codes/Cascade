@@ -30,6 +30,7 @@ set(TEST_SOURCES
     test_adaptive_sender.cpp
     test_io_uring_loop.cpp
     test_zero_copy_transfer.cpp
+    test_consistent_hash.cpp
 )
 
 # Linux/POSIX networking tests
