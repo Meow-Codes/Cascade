@@ -6,3 +6,9 @@ target_link_libraries(wal_verifier PRIVATE cascade_core)
 
 add_executable(broker_register_tool broker_register_tool.cpp)
 target_link_libraries(broker_register_tool PRIVATE cascade_core)
+
+add_executable(audio_loss_demo audio_loss_demo.cpp)
+target_link_libraries(audio_loss_demo PRIVATE cascade_core)
+
+add_executable(consumer_stall_demo consumer_stall_demo.cpp)
+target_link_libraries(consumer_stall_demo PRIVATE cascade_core)
