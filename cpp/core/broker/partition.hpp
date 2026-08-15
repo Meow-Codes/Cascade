@@ -62,9 +62,18 @@ public:
 
         if (publish_counter_) {
             publish_counter_->inc();
-            auto t1 = std::chrono::steady_clock::now();
-            publish_latency_->observe(
-                std::chrono::duration<double, std::micro>(t1 - t0).count());
+
+            // Sample latency rather than timing every publish.
+            // This keeps metrics lightweight on the hot path.
+            auto sample = latency_sample_counter_.fetch_add(
+                1, std::memory_order_relaxed);
+
+            if ((sample & 0xF) == 0) { // 1 out of every 16 publishes
+                auto t1 = std::chrono::steady_clock::now();
+
+                publish_latency_->observe(
+                    std::chrono::duration<double, std::micro>(t1 - t0).count());
+            }
         }
 
         return offset;
@@ -108,6 +117,7 @@ private:
     metrics::MetricsRegistry* metrics_ = nullptr;
     metrics::Counter* publish_counter_ = nullptr;
     metrics::Histogram* publish_latency_ = nullptr;
+    std::atomic<std::uint32_t> latency_sample_counter_{0};
 };
 
 } // namespace cascade::core::broker
