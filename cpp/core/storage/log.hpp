@@ -33,6 +33,8 @@
 #include <mutex>
 #include <stdexcept>
 #include <vector>
+#include <deque>
+#include <shared_mutex>
 
 #include "storage/segment.hpp"
 
@@ -50,7 +52,7 @@ public:
     }
 
     std::uint64_t append(const std::uint8_t* payload, std::uint32_t len) {
-        std::lock_guard<std::mutex> lock(writer_mutex_);
+        std::lock_guard<std::shared_mutex> lock(rw_mutex_);
 
         Segment* active = segments_.back().get();
         auto offset = active->append(payload, len);
@@ -70,19 +72,19 @@ public:
     }
 
     void flush() {
-        std::lock_guard<std::mutex> lock(writer_mutex_);
+        std::lock_guard<std::shared_mutex> lock(rw_mutex_);
         segments_.back()->flush();
     }
 
     std::optional<ReadResult> read(std::uint64_t offset) const {
-        auto snapshot = segments_snapshot();
+        std::shared_lock<std::shared_mutex> lock(rw_mutex_);  // readers proceed concurrently with each other now
 
-        auto it = std::upper_bound(snapshot.begin(), snapshot.end(), offset,
+        auto it = std::upper_bound(segments_.begin(), segments_.end(), offset,
             [](std::uint64_t off, const std::shared_ptr<Segment>& s) { return off < s->base_offset(); });
-        if (it == snapshot.begin()) return std::nullopt;
+        if (it == segments_.begin()) return std::nullopt;
         --it;
 
-        Segment* seg = it->get();
+        Segment* seg = it->get(); // safe: deque never moves existing elements, and we hold the lock
         std::size_t hint = seg->position_hint_for(offset);
         return seg->read_from(offset, hint);
     }
@@ -90,7 +92,7 @@ public:
     std::uint64_t next_offset() const { return next_offset_.load(std::memory_order_acquire); }
 
     std::size_t segment_count() const {
-        std::lock_guard<std::mutex> lock(writer_mutex_);
+        std::lock_guard<std::shared_mutex> lock(rw_mutex_);
         return segments_.size();
     }
 
@@ -133,16 +135,19 @@ private:
         }
     }
 
-    std::vector<std::shared_ptr<Segment>> segments_snapshot() const {
-        std::lock_guard<std::mutex> lock(writer_mutex_);
-        return segments_;
-    }
+    // std::vector<std::shared_ptr<Segment>> segments_snapshot() const {
+    //     std::lock_guard<std::shared_mutex> lock(rw_mutex_);
+    //     return std::vector<std::shared_ptr<Segment>>(segments_.begin(), segments_.end());
+    // }
 
     std::string dir_;
     std::size_t max_segment_bytes_;
-    std::vector<std::shared_ptr<Segment>> segments_;
+    std::deque<std::shared_ptr<Segment>> segments_;  // deque, not vector: push_back never
+                                                        // invalidates existing elements' addresses,
+                                                        // which is what makes lock-free-style
+                                                        // concurrent reads (below) safe.
     std::atomic<std::uint64_t> next_offset_{0};
-    mutable std::mutex writer_mutex_;
+    mutable std::shared_mutex rw_mutex_;  // was std::mutex writer_mutex_
 };
 
 } // namespace cascade::core::storage
