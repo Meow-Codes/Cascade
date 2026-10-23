@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cascade dashboard</title>
+<style>
+:root{--bg:#fff;--fg:#1a1a1a;--card:#f4f4f5;--mut:#6b7280;--a:#2563eb;--b:#16a34a;--bad:#dc2626}
+@media(prefers-color-scheme:dark){:root{--bg:#111214;--fg:#e8e8ea;--card:#1c1d20;--mut:#9aa0a6;--a:#60a5fa;--b:#4ade80;--bad:#f87171}}
+body{margin:0;padding:24px;background:var(--bg);color:var(--fg);font:14px system-ui,sans-serif}
+h1{font-size:18px;margin:0 0 16px;display:flex;align-items:center;gap:8px}
+#dot{width:10px;height:10px;border-radius:50%;background:var(--mut)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.card{background:var(--card);border-radius:8px;padding:12px 14px}
+.k{color:var(--mut);font-size:12px}.v{font-size:24px;font-weight:600;margin-top:4px}
+canvas{display:block;width:100%;height:160px;margin:16px 0 8px;background:var(--card);border-radius:8px}
+small{color:var(--mut)}
+</style></head><body>
+<h1><span id="dot"></span>Cascade broker</h1>
+<div class="grid">
+  <div class="card"><div class="k">Publish / s</div><div class="v" id="pub">–</div></div>
+  <div class="card"><div class="k">Consume / s</div><div class="v" id="con">–</div></div>
+  <div class="card"><div class="k">Publish latency p50</div><div class="v" id="p50">–</div></div>
+  <div class="card"><div class="k">Publish latency p99</div><div class="v" id="p99">–</div></div>
+  <div class="card"><div class="k">Backpressure rejects / s</div><div class="v" id="rej">–</div></div>
+  <div class="card"><div class="k">Resident memory</div><div class="v" id="rss">–</div></div>
+</div>
+<canvas id="cv"></canvas>
+<small>Blue: publish/s. Green: consume/s. Last 60 s. Latency quantiles are per-second-window bucket upper bounds, not exact values.</small>
+<script>
+const $ = id => document.getElementById(id);
+const BK = /^cascade_publish_latency_us_bucket\{le="([^"]+)"\}$/;
+let prev = null; const hist = [];
+
+function buckets(m) {
+  const r = [];
+  for (const k in m) { const x = BK.exec(k); if (x && x[1] !== "+Inf") r.push([+x[1], m[k]]); }
+  return r.sort((a, b) => a[0] - b[0]);
+}
+function quant(cur, old, q) {
+  const total = cur.n - old.n;
+  if (total <= 0 || cur.b.length !== old.b.length) return "–";
+  for (let i = 0; i < cur.b.length; i++)
+    if (cur.b[i][1] - old.b[i][1] >= q * total) return "≤" + cur.b[i][0] + " µs";
+  return ">" + cur.b[cur.b.length - 1][0] + " µs";
+}
+function draw() {
+  const cv = $("cv"), x = cv.getContext("2d"), d = devicePixelRatio;
+  const w = cv.width = cv.clientWidth * d, h = cv.height = cv.clientHeight * d;
+  const mx = Math.max(1, ...hist.flat()), css = getComputedStyle(document.documentElement);
+  [[0, "--a"], [1, "--b"]].forEach(([i, c]) => {
+    x.beginPath(); x.strokeStyle = css.getPropertyValue(c); x.lineWidth = 2 * d;
+    hist.forEach((p, k) => { const px = k / 59 * w, py = h - p[i] / mx * (h - 8) - 4; k ? x.lineTo(px, py) : x.moveTo(px, py); });
+    x.stroke();
+  });
+}
+async function tick() {
+  try {
+    const r = await fetch("/api/metrics"); if (!r.ok) throw 0;
+    const m = await r.json();
+    const cur = { t: performance.now(), pub: m.cascade_publish_total || 0, con: m.cascade_consume_total || 0,
+                  rej: m.cascade_publish_rejected_backpressure_total || 0,
+                  n: m.cascade_publish_latency_us_count || 0, b: buckets(m) };
+    $("dot").style.background = "var(--b)";
+    $("rss").textContent = ((m.process_resident_memory_bytes || 0) / 1048576).toFixed(0) + " MB";
+    if (prev) {
+      const dt = (cur.t - prev.t) / 1000, rate = (a, b) => Math.max(0, (a - b) / dt); // max(): counter reset on restart
+      const p = rate(cur.pub, prev.pub), c = rate(cur.con, prev.con);
+      $("pub").textContent = Math.round(p).toLocaleString();
+      $("con").textContent = Math.round(c).toLocaleString();
+      $("rej").textContent = Math.round(rate(cur.rej, prev.rej)).toLocaleString();
+      $("p50").textContent = quant(cur, prev, 0.5);
+      $("p99").textContent = quant(cur, prev, 0.99);
+      hist.push([p, c]); if (hist.length > 60) hist.shift(); draw();
+    }
+    prev = cur;
+  } catch (e) { $("dot").style.background = "var(--bad)"; prev = null; }
+}
+setInterval(tick, 1000); tick();
+</script></body></html>

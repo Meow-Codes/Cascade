@@ -12,3 +12,6 @@ target_link_libraries(audio_loss_demo PRIVATE cascade_core)
 
 add_executable(consumer_stall_demo consumer_stall_demo.cpp)
 target_link_libraries(consumer_stall_demo PRIVATE cascade_core)
+
+add_executable(broker_demo broker_demo.cpp)
+target_link_libraries(broker_demo PRIVATE cascade_core)

@@ -27,7 +27,13 @@ struct PublishResult {
 
 class Producer {
 public:
-    explicit Producer(std::shared_ptr<Topic> topic) : topic_(std::move(topic)) {}
+    explicit Producer(std::shared_ptr<Topic> topic)
+    : topic_(std::move(topic)),
+      hash_ring_(std::make_unique<ConsistentHashRing>()) {
+        for (int p = 0; p < topic_->num_partitions(); ++p) {
+            hash_ring_->add_partition(p);
+        }
+    }
 
     PublishResult publish(const std::uint8_t* payload, std::uint32_t len) {
         int p = static_cast<int>(round_robin_.fetch_add(1, std::memory_order_relaxed) %
@@ -48,11 +54,10 @@ public:
     // callers who care about minimal key remapping across partition-count
     // changes, since it costs a bit more (ring lookup vs a modulo) and most
     // single-broker v1 usage never resizes partition count anyway.
-    PublishResult publish_keyed_consistent(const std::string& key, const std::uint8_t* payload, std::uint32_t len) {
-        if (!hash_ring_) {
-            hash_ring_ = std::make_unique<ConsistentHashRing>();
-            for (int p = 0; p < topic_->num_partitions(); ++p) hash_ring_->add_partition(p);
-        }
+    PublishResult publish_keyed_consistent(
+        const std::string& key,
+        const std::uint8_t* payload,
+        std::uint32_t len) {
         int p = hash_ring_->partition_for(key);
         auto offset = topic_->partition(p)->publish(payload, len);
         return {p, offset};
@@ -69,7 +74,7 @@ public:
 private:
     std::shared_ptr<Topic> topic_;
     std::atomic<std::uint64_t> round_robin_{0};
-    std::unique_ptr<ConsistentHashRing> hash_ring_; // lazy init on first publish_keyed_consistent()
+    std::unique_ptr<ConsistentHashRing> hash_ring_; // initialized once in the constructor
 };
 
 } // namespace cascade::core::broker
