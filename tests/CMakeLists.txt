@@ -60,3 +60,19 @@ target_compile_definitions(cascade_tests PRIVATE
 
 include(GoogleTest)
 gtest_add_tests(TARGET cascade_tests)
+
+find_program(BASH_EXECUTABLE bash REQUIRED)
+
+add_test(
+    NAME ControlPlaneClientTLS.Integration
+    COMMAND
+        ${BASH_EXECUTABLE}
+        ${CMAKE_SOURCE_DIR}/tests/run_tls_integration.sh
+        ${CMAKE_SOURCE_DIR}
+        $<TARGET_FILE:cascade_tests>
+)
+
+set_tests_properties(
+    ControlPlaneClientTLS.ConnectsSuccessfullyWithCorrectCACert
+    PROPERTIES DISABLED TRUE
+)

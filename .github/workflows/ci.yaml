@@ -25,10 +25,15 @@ jobs:
             libgrpc++-dev \
             protobuf-compiler-grpc \
             liburing-dev \
-            pkg-config
+            pkg-config \
+            golang-go \
+            openssl
 
       - name: Configure
         run: cmake -S . -B build -G Ninja
+
+      - name: Generate test certificates
+        run: bash scripts/generate_test_certs.sh
 
       - name: Build
         run: cmake --build build
@@ -64,6 +69,9 @@ jobs:
           -G Ninja \
           -DCASCADE_ENABLE_ASAN=ON \
           -DCASCADE_ENABLE_UBSAN=ON
+        
+      - name: Generate test certificates
+        run: bash scripts/generate_test_certs.sh
 
       - name: Build
         run: cmake --build build-asan
