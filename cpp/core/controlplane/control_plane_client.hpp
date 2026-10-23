@@ -24,6 +24,11 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <cstdint>
+#include <fstream>
+#include <iterator>
+#include <utility>
+#include <vector>
 
 #include "threadpool/thread_pool.hpp"
 #include "timer/timer_wheel.hpp"
@@ -39,11 +44,42 @@ struct BrokerInfo {
 
 class ControlPlaneClient {
 public:
-    ControlPlaneClient(const std::string& control_plane_address, std::string broker_id, std::string broker_address)
-        : broker_id_(std::move(broker_id)), broker_address_(std::move(broker_address)) {
-        auto channel = grpc::CreateChannel(control_plane_address, grpc::InsecureChannelCredentials());
+    
+    ControlPlaneClient(
+        const std::string& control_plane_address,
+        std::string broker_id,
+        std::string broker_address,
+        std::string ca_cert_path = {})
+        : broker_id_(std::move(broker_id)),
+          broker_address_(std::move(broker_address)) {
+        std::shared_ptr<grpc::Channel> channel;
+
+        if (!ca_cert_path.empty()) {
+            std::ifstream file(ca_cert_path);
+            if (!file.is_open()) {
+                throw std::runtime_error(
+                    "failed to open CA cert file: " + ca_cert_path);
+            }
+
+            std::string ca_cert(
+                (std::istreambuf_iterator<char>(file)),
+                std::istreambuf_iterator<char>());
+
+            grpc::SslCredentialsOptions ssl_opts;
+            ssl_opts.pem_root_certs = ca_cert;
+
+            channel = grpc::CreateChannel(
+                control_plane_address,
+                grpc::SslCredentials(ssl_opts));
+        } else {
+            channel = grpc::CreateChannel(
+                control_plane_address,
+                grpc::InsecureChannelCredentials());
+        }
+
         stub_ = cascade::v1::CascadeControlPlane::NewStub(channel);
     }
+
 
     // Blocking. Throws on transport failure or explicit rejection --
     // registration failing is not a condition callers should silently

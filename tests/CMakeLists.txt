@@ -31,6 +31,7 @@ set(TEST_SOURCES
     test_io_uring_loop.cpp
     test_zero_copy_transfer.cpp
     test_consistent_hash.cpp
+    test_control_plane_client_tls.cpp
 )
 
 # Linux/POSIX networking tests
@@ -49,6 +50,9 @@ target_link_libraries(cascade_tests PRIVATE cascade_core gtest_main)
 target_include_directories(cascade_tests PRIVATE ${CMAKE_SOURCE_DIR}/cpp/core)
 target_link_libraries(cascade_integration_tests PRIVATE cascade_core gtest_main)
 target_include_directories(cascade_integration_tests PRIVATE ${CMAKE_SOURCE_DIR}/cpp/core)
+target_compile_definitions(cascade_tests PRIVATE
+    CASCADE_PROJECT_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
 # Deliberately NOT calling gtest_discover_tests() here -- this keeps it
 # out of the default `ctest` run, which must stay runnable with zero
 # external dependencies (Go server, network) per every prior phase's

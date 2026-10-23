@@ -20,7 +20,10 @@ TEST(ZeroCopyTransfer, SendFileRangeTransfersExactBytes) {
 
     int wfd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
     ASSERT_GE(wfd, 0);
-    ::write(wfd, content.data(), content.size());
+    const ssize_t bytes_written = ::write(wfd, content.data(), content.size());
+
+    ASSERT_EQ(bytes_written, static_cast<ssize_t>(content.size()))
+        << "Failed to write the complete test content";
     ::close(wfd);
 
     EpollLoop loop;

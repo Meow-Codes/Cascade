@@ -38,6 +38,12 @@ build.ninja
 Thumbs.db
 
 # Logs
-*.logperf_broker.data
+*.log
+
+# perf output (multi-GB)
 perf_broker.data
 perf_broker.data.*
+
+# Certificates (private keys + CA serial file)
+certs/*-key.pem
+certs/*.srl
