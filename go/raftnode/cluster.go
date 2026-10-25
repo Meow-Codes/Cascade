@@ -23,6 +23,7 @@ type Node struct {
 	Transport *raft.InmemTransport // nil for disk-backed (	) nodes -- partition
 	                                 // simulation (Partition/Heal) only applies to the
 	                                 // in-memory test cluster from Phase 9, not to these.
+	Recovered bool // true if this node started from existing on-disk raft state
 	closeFns  []func() error
 }
 
@@ -46,6 +47,20 @@ func newConfig(id string) *raft.Config {
 	// fast election timeouts above.
 	cfg.TrailingLogs = 10
 	cfg.SnapshotThreshold = 20
+	return cfg
+}
+
+// DaemonConfig is for real multi-process clusters (raftd). newConfig's
+// 100ms timings are for in-process tests and are too twitchy here.
+func DaemonConfig(id string) *raft.Config {
+	cfg := raft.DefaultConfig()
+	cfg.LocalID = raft.ServerID(id)
+	cfg.HeartbeatTimeout = 500 * time.Millisecond
+	cfg.ElectionTimeout = 500 * time.Millisecond
+	cfg.LeaderLeaseTimeout = 250 * time.Millisecond
+	cfg.CommitTimeout = 50 * time.Millisecond
+	cfg.SnapshotThreshold = 512
+	cfg.TrailingLogs = 256
 	return cfg
 }
 

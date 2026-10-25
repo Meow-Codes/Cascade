@@ -19,7 +19,14 @@ func (n *Node) RenderPrometheusStats() string {
 		sb.WriteString(fmt.Sprintf("# TYPE cascade_raft_state gauge\ncascade_raft_state{node=%q,value=%q} 1\n", n.ID, state))
 	}
 
-	numericKeys := []string{"term", "commit_index", "applied_index", "fsm_pending", "last_log_index", "last_snapshot_index"}
+	isLeader := 0
+	if n.IsLeader() {
+		isLeader = 1
+	}
+	sb.WriteString(fmt.Sprintf("# TYPE cascade_raft_is_leader gauge\ncascade_raft_is_leader{node=%q} %d\n", n.ID, isLeader))
+
+	numericKeys := []string{"term", "commit_index", "applied_index", "fsm_pending",
+		"last_log_index", "last_snapshot_index", "num_peers"}
 	for _, k := range numericKeys {
 		v, ok := stats[k]
 		if !ok {
@@ -29,8 +36,19 @@ func (n *Node) RenderPrometheusStats() string {
 		if err != nil {
 			continue
 		}
-		metricName := "cascade_raft_" + k
-		sb.WriteString(fmt.Sprintf("# TYPE %s gauge\n%s{node=%q} %d\n", metricName, metricName, n.ID, iv))
+		name := "cascade_raft_" + k
+		sb.WriteString(fmt.Sprintf("# TYPE %s gauge\n%s{node=%q} %d\n", name, name, n.ID, iv))
+	}
+
+	// Local apply lag: log entries this node has received but not yet applied.
+	last, e1 := strconv.ParseInt(stats["last_log_index"], 10, 64)
+	applied, e2 := strconv.ParseInt(stats["applied_index"], 10, 64)
+	if e1 == nil && e2 == nil {
+		lag := last - applied
+		if lag < 0 {
+			lag = 0
+		}
+		sb.WriteString(fmt.Sprintf("# TYPE cascade_raft_apply_lag_entries gauge\ncascade_raft_apply_lag_entries{node=%q} %d\n", n.ID, lag))
 	}
 	return sb.String()
 }
