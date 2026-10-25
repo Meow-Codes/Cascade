@@ -1,33 +1,30 @@
 #pragma once
 // Cascade :: core::controlplane :: ControlPlaneClient
 //
-// Thin C++ gRPC client for the Go control plane's CascadeControlPlane
-// service (Phase 8). This is the missing half of the architecture claim
-// from the roadmap: "C++23 owns the hot path... Go owns the control
-// plane." Everything here is registration/heartbeat/admin traffic --
-// low-frequency, latency-insensitive -- which is exactly why it's
-// acceptable for this to go through gRPC/protobuf serialization overhead
-// that would never be tolerated on the Phase 2-6 hot path (TCP/UDP
-// framing, storage, media).
-//
-// Heartbeating is driven by Phase 1's ThreadPool + TimerWheel rather
-// than a dedicated sleep-loop thread -- reuses infrastructure this
-// project already built and tested, instead of introducing a third way
-// to schedule periodic work.
+// gRPC client for the Go control plane. `control_plane_addresses` may be a
+// comma-separated list ("h1:50051,h2:50052,h3:50053") for a raftd cluster:
+//  - FAILED_PRECONDITION + "x-cascade-leader" trailer => switch to that
+//    leader address and retry (leader-aware routing);
+//  - UNAVAILABLE / DEADLINE_EXCEEDED => rotate to the next endpoint and retry
+//    (leader crashed / election in progress);
+//  - any other status is an application-level answer and is returned as-is.
+// With a single address and a plain controlplaned this reduces to the
+// original behaviour.
 
 #include <grpcpp/grpcpp.h>
 #include "cascade.grpc.pb.h"
 
+#include <algorithm>
 #include <atomic>
-#include <memory>
-#include <mutex>
-#include <optional>
-#include <stdexcept>
-#include <string>
-#include <cstdint>
+#include <chrono>
 #include <fstream>
 #include <iterator>
-#include <utility>
+#include <memory>
+#include <mutex>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <thread>
 #include <vector>
 
 #include "threadpool/thread_pool.hpp"
@@ -44,80 +41,66 @@ struct BrokerInfo {
 
 class ControlPlaneClient {
 public:
-    
-    ControlPlaneClient(
-        const std::string& control_plane_address,
-        std::string broker_id,
-        std::string broker_address,
-        std::string ca_cert_path = {})
-        : broker_id_(std::move(broker_id)),
-          broker_address_(std::move(broker_address)) {
-        std::shared_ptr<grpc::Channel> channel;
+    ControlPlaneClient(const std::string& control_plane_addresses, std::string broker_id,
+                        std::string broker_address, const std::string& ca_cert_path = "")
+        : broker_id_(std::move(broker_id)), broker_address_(std::move(broker_address)) {
+        endpoints_ = split_addresses(control_plane_addresses);
+        if (endpoints_.empty()) throw std::runtime_error("no control plane address given");
 
         if (!ca_cert_path.empty()) {
             std::ifstream file(ca_cert_path);
-            if (!file.is_open()) {
-                throw std::runtime_error(
-                    "failed to open CA cert file: " + ca_cert_path);
-            }
-
-            std::string ca_cert(
-                (std::istreambuf_iterator<char>(file)),
-                std::istreambuf_iterator<char>());
-
+            if (!file.is_open()) throw std::runtime_error("failed to open CA cert file: " + ca_cert_path);
+            std::string ca_cert((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
             grpc::SslCredentialsOptions ssl_opts;
             ssl_opts.pem_root_certs = ca_cert;
-
-            channel = grpc::CreateChannel(
-                control_plane_address,
-                grpc::SslCredentials(ssl_opts));
+            creds_ = grpc::SslCredentials(ssl_opts);
         } else {
-            channel = grpc::CreateChannel(
-                control_plane_address,
-                grpc::InsecureChannelCredentials());
+            creds_ = grpc::InsecureChannelCredentials();
         }
-
-        stub_ = cascade::v1::CascadeControlPlane::NewStub(channel);
+        connect_locked();
     }
 
-
-    // Blocking. Throws on transport failure or explicit rejection --
-    // registration failing is not a condition callers should silently
-    // continue past, unlike a single missed heartbeat.
+    // Blocking; throws on failure (registration failing is not something
+    // callers should silently continue past).
     void register_broker() {
         cascade::v1::RegisterBrokerRequest req;
         req.set_broker_id(broker_id_);
         req.set_address(broker_address_);
-
         cascade::v1::RegisterBrokerResponse resp;
-        grpc::ClientContext ctx;
-        auto status = stub_->RegisterBroker(&ctx, req, &resp);
-        if (!status.ok()) {
-            throw std::runtime_error("RegisterBroker RPC failed: " + status.error_message());
-        }
-        if (!resp.registered()) {
-            throw std::runtime_error("control plane rejected broker registration");
-        }
+
+        auto status = call_with_failover([&](Stub& stub, grpc::ClientContext& ctx) {
+            return stub.RegisterBroker(&ctx, req, &resp);
+        });
+        if (!status.ok()) throw std::runtime_error("RegisterBroker RPC failed: " + status.error_message());
+        if (!resp.registered()) throw std::runtime_error("control plane rejected broker registration");
         registered_ = true;
     }
 
-    // Non-throwing: a single missed heartbeat is expected to happen
-    // occasionally (transient network blip) and shouldn't crash the
-    // broker. Returns false on failure so callers can log/count it.
+    // Non-throwing: one missed heartbeat must not crash the broker.
     bool heartbeat_once() {
         cascade::v1::HeartbeatRequest req;
         req.set_broker_id(broker_id_);
         cascade::v1::HeartbeatResponse resp;
-        grpc::ClientContext ctx;
-        auto status = stub_->Heartbeat(&ctx, req, &resp);
-        return status.ok() && resp.acknowledged();
+
+        auto status = call_with_failover([&](Stub& stub, grpc::ClientContext& ctx) {
+            return stub.Heartbeat(&ctx, req, &resp);
+        });
+        if (!status.ok()) return false;
+        if (!resp.acknowledged()) {
+            // The control plane doesn't know us (state wiped / raced a
+            // registration): re-register so we don't heartbeat into the void.
+            try { register_broker(); } catch (...) {}
+            return false;
+        }
+        return true;
     }
 
     std::vector<BrokerInfo> list_brokers() {
         cascade::v1::Empty req;
         cascade::v1::ListBrokersResponse resp;
-        grpc::ClientContext ctx;
-        auto status = stub_->ListBrokers(&ctx, req, &resp);
+        auto status = call_with_failover([&](Stub& stub, grpc::ClientContext& ctx) {
+            return stub.ListBrokers(&ctx, req, &resp);
+        });
         if (!status.ok()) throw std::runtime_error("ListBrokers RPC failed: " + status.error_message());
 
         std::vector<BrokerInfo> out;
@@ -134,19 +117,15 @@ public:
         req.set_name(name);
         req.set_num_partitions(num_partitions);
         cascade::v1::CreateTopicResponse resp;
-        grpc::ClientContext ctx;
-        auto status = stub_->CreateTopic(&ctx, req, &resp);
+        auto status = call_with_failover([&](Stub& stub, grpc::ClientContext& ctx) {
+            return stub.CreateTopic(&ctx, req, &resp);
+        });
         if (!status.ok()) throw std::runtime_error("CreateTopic RPC failed: " + status.error_message());
         return {resp.created(), resp.error()};
     }
 
-    // Starts periodic heartbeating via the given ThreadPool/TimerWheel,
-    // re-arming itself after every heartbeat_interval_ms. Caller owns the
-    // pool/wheel lifetime and must keep ticking the wheel (see Phase 2's
-    // ConnectionManager for the same pattern) for heartbeats to actually
-    // fire. Automatically registers first if not already registered.
-    void start_heartbeating(cascade::core::ThreadPool& pool, cascade::core::TimerWheel& wheel,
-                             std::uint64_t heartbeat_interval_ms) {
+    void start_heartbeating(ThreadPool& pool, TimerWheel& wheel,
+                        std::uint64_t heartbeat_interval_ms) {
         if (!registered_) register_broker();
         schedule_next_heartbeat(pool, wheel, heartbeat_interval_ms);
     }
@@ -154,11 +133,94 @@ public:
     void stop_heartbeating() { stop_.store(true, std::memory_order_relaxed); }
 
     std::size_t missed_heartbeats() const { return missed_heartbeats_.load(std::memory_order_relaxed); }
-    bool is_registered() const { return registered_; }
+    bool is_registered() const { return registered_.load(); }
+
+    std::string current_endpoint() {
+        std::lock_guard<std::mutex> lock(ep_mutex_);
+        return endpoints_[current_idx_];
+    }
 
 private:
-    void schedule_next_heartbeat(cascade::core::ThreadPool& pool, cascade::core::TimerWheel& wheel,
-                                  std::uint64_t interval_ms) {
+    using Stub = cascade::v1::CascadeControlPlane::Stub;
+
+    static std::vector<std::string> split_addresses(const std::string& s) {
+        std::vector<std::string> out;
+        std::stringstream ss(s);
+        std::string item;
+        while (std::getline(ss, item, ',')) {
+            auto b = item.find_first_not_of(" \t");
+            auto e = item.find_last_not_of(" \t");
+            if (b != std::string::npos) out.push_back(item.substr(b, e - b + 1));
+        }
+        return out;
+    }
+
+    
+    void connect_locked() {
+        stub_ = cascade::v1::CascadeControlPlane::NewStub(
+            grpc::CreateChannel(endpoints_[current_idx_], creds_));
+    }
+
+    std::shared_ptr<Stub> current_stub() {
+        std::lock_guard<std::mutex> lock(ep_mutex_);
+        return stub_;
+    }
+
+    void rotate_endpoint() {
+        std::lock_guard<std::mutex> lock(ep_mutex_);
+        current_idx_ = (current_idx_ + 1) % endpoints_.size();
+        connect_locked();
+    }
+
+    void follow_leader(const std::string& leader_addr) {
+        std::lock_guard<std::mutex> lock(ep_mutex_);
+        auto it = std::find(endpoints_.begin(), endpoints_.end(), leader_addr);
+        std::size_t idx;
+        if (it == endpoints_.end()) {
+            endpoints_.push_back(leader_addr);
+            idx = endpoints_.size() - 1;
+        } else {
+            idx = static_cast<std::size_t>(it - endpoints_.begin());
+        }
+        if (idx != current_idx_) {
+            current_idx_ = idx;
+            connect_locked();
+        }
+    }
+
+    template <typename Fn>
+    grpc::Status call_with_failover(Fn&& rpc) {
+        constexpr int kMaxAttempts = 12;
+        grpc::Status status;
+        for (int attempt = 0; attempt < kMaxAttempts; ++attempt) {
+            auto stub = current_stub();
+            grpc::ClientContext ctx;
+            ctx.set_deadline(std::chrono::system_clock::now() + rpc_timeout_);
+            status = rpc(*stub, ctx);
+            if (status.ok()) return status;
+
+            const auto code = status.error_code();
+            if (code == grpc::StatusCode::FAILED_PRECONDITION) {
+                const auto& trailers = ctx.GetServerTrailingMetadata();
+                auto it = trailers.find("x-cascade-leader");
+                if (it != trailers.end()) {
+                    follow_leader(std::string(it->second.data(), it->second.size()));
+                    continue; // straight to the leader, no sleep
+                }
+                rotate_endpoint(); // not leader and no hint known yet
+            } else if (code == grpc::StatusCode::UNAVAILABLE ||
+                       code == grpc::StatusCode::DEADLINE_EXCEEDED) {
+                rotate_endpoint();
+            } else {
+                return status; // application-level error: don't retry
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        return status;
+    }
+
+    void schedule_next_heartbeat(ThreadPool& pool, TimerWheel& wheel,
+                             std::uint64_t interval_ms) {
         if (stop_.load(std::memory_order_relaxed)) return;
         wheel.add_timer(interval_ms, [this, &pool, &wheel, interval_ms] {
             pool.submit([this] {
@@ -170,8 +232,15 @@ private:
 
     std::string broker_id_;
     std::string broker_address_;
-    std::unique_ptr<cascade::v1::CascadeControlPlane::Stub> stub_;
-    bool registered_ = false;
+
+    std::mutex ep_mutex_;
+    std::vector<std::string> endpoints_;
+    std::size_t current_idx_ = 0;
+    std::shared_ptr<grpc::ChannelCredentials> creds_;
+    std::shared_ptr<Stub> stub_;
+
+    std::chrono::milliseconds rpc_timeout_{1500};
+    std::atomic<bool> registered_{false};
     std::atomic<bool> stop_{false};
     std::atomic<std::size_t> missed_heartbeats_{0};
 };
