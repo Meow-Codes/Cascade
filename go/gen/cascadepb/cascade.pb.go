@@ -553,6 +553,118 @@ func (x *ListBrokersResponse) GetBrokers() []*BrokerInfo {
 	return nil
 }
 
+type JoinClusterRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NodeId        string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	RaftAddress   string                 `protobuf:"bytes,2,opt,name=raft_address,json=raftAddress,proto3" json:"raft_address,omitempty"` // raft transport address (host:port)
+	GrpcAddress   string                 `protobuf:"bytes,3,opt,name=grpc_address,json=grpcAddress,proto3" json:"grpc_address,omitempty"` // this node's client-facing gRPC address
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *JoinClusterRequest) Reset() {
+	*x = JoinClusterRequest{}
+	mi := &file_proto_cascade_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JoinClusterRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JoinClusterRequest) ProtoMessage() {}
+
+func (x *JoinClusterRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_cascade_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JoinClusterRequest.ProtoReflect.Descriptor instead.
+func (*JoinClusterRequest) Descriptor() ([]byte, []int) {
+	return file_proto_cascade_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *JoinClusterRequest) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+func (x *JoinClusterRequest) GetRaftAddress() string {
+	if x != nil {
+		return x.RaftAddress
+	}
+	return ""
+}
+
+func (x *JoinClusterRequest) GetGrpcAddress() string {
+	if x != nil {
+		return x.GrpcAddress
+	}
+	return ""
+}
+
+type JoinClusterResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Joined        bool                   `protobuf:"varint,1,opt,name=joined,proto3" json:"joined,omitempty"`
+	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *JoinClusterResponse) Reset() {
+	*x = JoinClusterResponse{}
+	mi := &file_proto_cascade_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JoinClusterResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JoinClusterResponse) ProtoMessage() {}
+
+func (x *JoinClusterResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_cascade_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JoinClusterResponse.ProtoReflect.Descriptor instead.
+func (*JoinClusterResponse) Descriptor() ([]byte, []int) {
+	return file_proto_cascade_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *JoinClusterResponse) GetJoined() bool {
+	if x != nil {
+		return x.Joined
+	}
+	return false
+}
+
+func (x *JoinClusterResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
 var File_proto_cascade_proto protoreflect.FileDescriptor
 
 const file_proto_cascade_proto_rawDesc = "" +
@@ -589,14 +701,22 @@ const file_proto_cascade_proto_rawDesc = "" +
 	"\x05alive\x18\x03 \x01(\bR\x05alive\x123\n" +
 	"\x16last_heartbeat_unix_ms\x18\x04 \x01(\x03R\x13lastHeartbeatUnixMs\"G\n" +
 	"\x13ListBrokersResponse\x120\n" +
-	"\abrokers\x18\x01 \x03(\v2\x16.cascade.v1.BrokerInfoR\abrokers2\x8c\x03\n" +
+	"\abrokers\x18\x01 \x03(\v2\x16.cascade.v1.BrokerInfoR\abrokers\"s\n" +
+	"\x12JoinClusterRequest\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12!\n" +
+	"\fraft_address\x18\x02 \x01(\tR\vraftAddress\x12!\n" +
+	"\fgrpc_address\x18\x03 \x01(\tR\vgrpcAddress\"C\n" +
+	"\x13JoinClusterResponse\x12\x16\n" +
+	"\x06joined\x18\x01 \x01(\bR\x06joined\x12\x14\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error2\xdc\x03\n" +
 	"\x13CascadeControlPlane\x12N\n" +
 	"\vCreateTopic\x12\x1e.cascade.v1.CreateTopicRequest\x1a\x1f.cascade.v1.CreateTopicResponse\x12?\n" +
 	"\n" +
 	"ListTopics\x12\x11.cascade.v1.Empty\x1a\x1e.cascade.v1.ListTopicsResponse\x12W\n" +
 	"\x0eRegisterBroker\x12!.cascade.v1.RegisterBrokerRequest\x1a\".cascade.v1.RegisterBrokerResponse\x12H\n" +
 	"\tHeartbeat\x12\x1c.cascade.v1.HeartbeatRequest\x1a\x1d.cascade.v1.HeartbeatResponse\x12A\n" +
-	"\vListBrokers\x12\x11.cascade.v1.Empty\x1a\x1f.cascade.v1.ListBrokersResponseB\x17Z\x15cascade/gen/cascadepbb\x06proto3"
+	"\vListBrokers\x12\x11.cascade.v1.Empty\x1a\x1f.cascade.v1.ListBrokersResponse\x12N\n" +
+	"\vJoinCluster\x12\x1e.cascade.v1.JoinClusterRequest\x1a\x1f.cascade.v1.JoinClusterResponseB\x17Z\x15cascade/gen/cascadepbb\x06proto3"
 
 var (
 	file_proto_cascade_proto_rawDescOnce sync.Once
@@ -610,7 +730,7 @@ func file_proto_cascade_proto_rawDescGZIP() []byte {
 	return file_proto_cascade_proto_rawDescData
 }
 
-var file_proto_cascade_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_proto_cascade_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_proto_cascade_proto_goTypes = []any{
 	(*Empty)(nil),                  // 0: cascade.v1.Empty
 	(*Topic)(nil),                  // 1: cascade.v1.Topic
@@ -623,6 +743,8 @@ var file_proto_cascade_proto_goTypes = []any{
 	(*HeartbeatResponse)(nil),      // 8: cascade.v1.HeartbeatResponse
 	(*BrokerInfo)(nil),             // 9: cascade.v1.BrokerInfo
 	(*ListBrokersResponse)(nil),    // 10: cascade.v1.ListBrokersResponse
+	(*JoinClusterRequest)(nil),     // 11: cascade.v1.JoinClusterRequest
+	(*JoinClusterResponse)(nil),    // 12: cascade.v1.JoinClusterResponse
 }
 var file_proto_cascade_proto_depIdxs = []int32{
 	1,  // 0: cascade.v1.ListTopicsResponse.topics:type_name -> cascade.v1.Topic
@@ -632,13 +754,15 @@ var file_proto_cascade_proto_depIdxs = []int32{
 	5,  // 4: cascade.v1.CascadeControlPlane.RegisterBroker:input_type -> cascade.v1.RegisterBrokerRequest
 	7,  // 5: cascade.v1.CascadeControlPlane.Heartbeat:input_type -> cascade.v1.HeartbeatRequest
 	0,  // 6: cascade.v1.CascadeControlPlane.ListBrokers:input_type -> cascade.v1.Empty
-	3,  // 7: cascade.v1.CascadeControlPlane.CreateTopic:output_type -> cascade.v1.CreateTopicResponse
-	4,  // 8: cascade.v1.CascadeControlPlane.ListTopics:output_type -> cascade.v1.ListTopicsResponse
-	6,  // 9: cascade.v1.CascadeControlPlane.RegisterBroker:output_type -> cascade.v1.RegisterBrokerResponse
-	8,  // 10: cascade.v1.CascadeControlPlane.Heartbeat:output_type -> cascade.v1.HeartbeatResponse
-	10, // 11: cascade.v1.CascadeControlPlane.ListBrokers:output_type -> cascade.v1.ListBrokersResponse
-	7,  // [7:12] is the sub-list for method output_type
-	2,  // [2:7] is the sub-list for method input_type
+	11, // 7: cascade.v1.CascadeControlPlane.JoinCluster:input_type -> cascade.v1.JoinClusterRequest
+	3,  // 8: cascade.v1.CascadeControlPlane.CreateTopic:output_type -> cascade.v1.CreateTopicResponse
+	4,  // 9: cascade.v1.CascadeControlPlane.ListTopics:output_type -> cascade.v1.ListTopicsResponse
+	6,  // 10: cascade.v1.CascadeControlPlane.RegisterBroker:output_type -> cascade.v1.RegisterBrokerResponse
+	8,  // 11: cascade.v1.CascadeControlPlane.Heartbeat:output_type -> cascade.v1.HeartbeatResponse
+	10, // 12: cascade.v1.CascadeControlPlane.ListBrokers:output_type -> cascade.v1.ListBrokersResponse
+	12, // 13: cascade.v1.CascadeControlPlane.JoinCluster:output_type -> cascade.v1.JoinClusterResponse
+	8,  // [8:14] is the sub-list for method output_type
+	2,  // [2:8] is the sub-list for method input_type
 	2,  // [2:2] is the sub-list for extension type_name
 	2,  // [2:2] is the sub-list for extension extendee
 	0,  // [0:2] is the sub-list for field type_name
@@ -655,7 +779,7 @@ func file_proto_cascade_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_cascade_proto_rawDesc), len(file_proto_cascade_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   11,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -24,6 +24,7 @@ const (
 	CascadeControlPlane_RegisterBroker_FullMethodName = "/cascade.v1.CascadeControlPlane/RegisterBroker"
 	CascadeControlPlane_Heartbeat_FullMethodName      = "/cascade.v1.CascadeControlPlane/Heartbeat"
 	CascadeControlPlane_ListBrokers_FullMethodName    = "/cascade.v1.CascadeControlPlane/ListBrokers"
+	CascadeControlPlane_JoinCluster_FullMethodName    = "/cascade.v1.CascadeControlPlane/JoinCluster"
 )
 
 // CascadeControlPlaneClient is the client API for CascadeControlPlane service.
@@ -41,6 +42,7 @@ type CascadeControlPlaneClient interface {
 	RegisterBroker(ctx context.Context, in *RegisterBrokerRequest, opts ...grpc.CallOption) (*RegisterBrokerResponse, error)
 	Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error)
 	ListBrokers(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*ListBrokersResponse, error)
+	JoinCluster(ctx context.Context, in *JoinClusterRequest, opts ...grpc.CallOption) (*JoinClusterResponse, error)
 }
 
 type cascadeControlPlaneClient struct {
@@ -101,6 +103,16 @@ func (c *cascadeControlPlaneClient) ListBrokers(ctx context.Context, in *Empty, 
 	return out, nil
 }
 
+func (c *cascadeControlPlaneClient) JoinCluster(ctx context.Context, in *JoinClusterRequest, opts ...grpc.CallOption) (*JoinClusterResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(JoinClusterResponse)
+	err := c.cc.Invoke(ctx, CascadeControlPlane_JoinCluster_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CascadeControlPlaneServer is the server API for CascadeControlPlane service.
 // All implementations must embed UnimplementedCascadeControlPlaneServer
 // for forward compatibility.
@@ -116,6 +128,7 @@ type CascadeControlPlaneServer interface {
 	RegisterBroker(context.Context, *RegisterBrokerRequest) (*RegisterBrokerResponse, error)
 	Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error)
 	ListBrokers(context.Context, *Empty) (*ListBrokersResponse, error)
+	JoinCluster(context.Context, *JoinClusterRequest) (*JoinClusterResponse, error)
 	mustEmbedUnimplementedCascadeControlPlaneServer()
 }
 
@@ -140,6 +153,9 @@ func (UnimplementedCascadeControlPlaneServer) Heartbeat(context.Context, *Heartb
 }
 func (UnimplementedCascadeControlPlaneServer) ListBrokers(context.Context, *Empty) (*ListBrokersResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListBrokers not implemented")
+}
+func (UnimplementedCascadeControlPlaneServer) JoinCluster(context.Context, *JoinClusterRequest) (*JoinClusterResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method JoinCluster not implemented")
 }
 func (UnimplementedCascadeControlPlaneServer) mustEmbedUnimplementedCascadeControlPlaneServer() {}
 func (UnimplementedCascadeControlPlaneServer) testEmbeddedByValue()                             {}
@@ -252,6 +268,24 @@ func _CascadeControlPlane_ListBrokers_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _CascadeControlPlane_JoinCluster_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(JoinClusterRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CascadeControlPlaneServer).JoinCluster(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CascadeControlPlane_JoinCluster_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CascadeControlPlaneServer).JoinCluster(ctx, req.(*JoinClusterRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // CascadeControlPlane_ServiceDesc is the grpc.ServiceDesc for CascadeControlPlane service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -278,6 +312,10 @@ var CascadeControlPlane_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListBrokers",
 			Handler:    _CascadeControlPlane_ListBrokers_Handler,
+		},
+		{
+			MethodName: "JoinCluster",
+			Handler:    _CascadeControlPlane_JoinCluster_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

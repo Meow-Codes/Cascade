@@ -15,6 +15,7 @@ service CascadeControlPlane {
   rpc RegisterBroker(RegisterBrokerRequest) returns (RegisterBrokerResponse);
   rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
   rpc ListBrokers(Empty) returns (ListBrokersResponse);
+  rpc JoinCluster(JoinClusterRequest) returns (JoinClusterResponse);
 }
 
 message Empty {}
@@ -60,4 +61,14 @@ message BrokerInfo {
 }
 message ListBrokersResponse {
   repeated BrokerInfo brokers = 1;
+}
+
+message JoinClusterRequest {
+  string node_id = 1;
+  string raft_address = 2;  // raft transport address (host:port)
+  string grpc_address = 3;  // this node's client-facing gRPC address
+}
+message JoinClusterResponse {
+  bool joined = 1;
+  string error = 2;
 }
