@@ -4,16 +4,28 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cascade dashboard</title>
 <style>
-:root{--bg:#fff;--fg:#1a1a1a;--card:#f4f4f5;--mut:#6b7280;--a:#2563eb;--b:#16a34a;--bad:#dc2626}
-@media(prefers-color-scheme:dark){:root{--bg:#111214;--fg:#e8e8ea;--card:#1c1d20;--mut:#9aa0a6;--a:#60a5fa;--b:#4ade80;--bad:#f87171}}
+:root{--bg:#fff;--fg:#1a1a1a;--card:#f4f4f5;--mut:#6b7280;--a:#2563eb;--b:#16a34a;--bad:#dc2626;--warn:#d97706}
+@media(prefers-color-scheme:dark){:root{--bg:#111214;--fg:#e8e8ea;--card:#1c1d20;--mut:#9aa0a6;--a:#60a5fa;--b:#4ade80;--bad:#f87171;--warn:#fbbf24}}
+[hidden]{display:none!important}
 body{margin:0;padding:24px;background:var(--bg);color:var(--fg);font:14px system-ui,sans-serif}
 h1{font-size:18px;margin:0 0 16px;display:flex;align-items:center;gap:8px}
+h2{font-size:15px;margin:28px 0 4px}
 #dot{width:10px;height:10px;border-radius:50%;background:var(--mut)}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
 .card{background:var(--card);border-radius:8px;padding:12px 14px}
 .k{color:var(--mut);font-size:12px}.v{font-size:24px;font-weight:600;margin-top:4px}
 canvas{display:block;width:100%;height:160px;margin:16px 0 8px;background:var(--card);border-radius:8px}
 small{color:var(--mut)}
+.node{background:var(--card);border-radius:8px;padding:12px 14px;border-left:4px solid var(--mut)}
+.node.leader{border-left-color:var(--b)}
+.node.down{border-left-color:var(--bad);opacity:.7}
+.nh{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.badge{font-size:11px;padding:2px 8px;border-radius:99px;background:var(--bg);color:var(--mut)}
+.leader .badge{color:var(--b)}.down .badge{color:var(--bad)}
+.row{display:flex;justify-content:space-between;padding:2px 0}
+.row .k{font-size:13px}
+#events{margin-top:12px;font:12px ui-monospace,monospace;color:var(--mut);line-height:1.6}
+#rsum{margin:0 0 12px;color:var(--mut)}
 </style></head><body>
 <h1><span id="dot"></span>Cascade broker</h1>
 <div class="grid">
@@ -26,8 +38,20 @@ small{color:var(--mut)}
 </div>
 <canvas id="cv"></canvas>
 <small>Blue: publish/s. Green: consume/s. Last 60 s. Latency quantiles are per-second-window bucket upper bounds, not exact values.</small>
+
+<section id="raft" hidden>
+  <h2>Raft cluster</h2>
+  <p id="rsum">–</p>
+  <div class="grid" id="nodes"></div>
+  <div id="events"></div>
+  <small>"Behind leader" = highest commit index among reachable nodes minus this node's. All nodes are scraped in one pass, so ±1–2 is jitter. "Apply lag" is local (received but not yet applied).</small>
+</section>
+
 <script>
 const $ = id => document.getElementById(id);
+function el(t, c, x) { const e = document.createElement(t); if (c) e.className = c; if (x !== undefined) e.textContent = x; return e; }
+
+/* ---------- broker panel ---------- */
 const BK = /^cascade_publish_latency_us_bucket\{le="([^"]+)"\}$/;
 let prev = null; const hist = [];
 
@@ -63,7 +87,7 @@ async function tick() {
     $("dot").style.background = "var(--b)";
     $("rss").textContent = ((m.process_resident_memory_bytes || 0) / 1048576).toFixed(0) + " MB";
     if (prev) {
-      const dt = (cur.t - prev.t) / 1000, rate = (a, b) => Math.max(0, (a - b) / dt); // max(): counter reset on restart
+      const dt = (cur.t - prev.t) / 1000, rate = (a, b) => Math.max(0, (a - b) / dt);
       const p = rate(cur.pub, prev.pub), c = rate(cur.con, prev.con);
       $("pub").textContent = Math.round(p).toLocaleString();
       $("con").textContent = Math.round(c).toLocaleString();
@@ -76,4 +100,56 @@ async function tick() {
   } catch (e) { $("dot").style.background = "var(--bad)"; prev = null; }
 }
 setInterval(tick, 1000); tick();
+
+/* ---------- raft panel ---------- */
+let rprev = null; const events = [];
+function ev(msg) {
+  const t = new Date().toLocaleTimeString([], { hour12: false });
+  events.unshift(t + "  " + msg); if (events.length > 8) events.pop();
+}
+async function raftTick() {
+  let nodes;
+  try { const r = await fetch("/api/raft"); if (!r.ok) throw 0; nodes = await r.json(); } catch (e) { return; }
+  $("raft").hidden = nodes.length === 0;
+  if (!nodes.length) return;
+
+  const up = nodes.filter(n => n.up);
+  const maxCommit = Math.max(0, ...up.map(n => n.commit_index));
+  const leaders = up.filter(n => n.is_leader);
+  const leader = leaders.length === 1 ? leaders[0].name : null;
+  const now = performance.now();
+
+  if (rprev) {
+    nodes.forEach(n => { const was = rprev.up[n.name]; if (was !== undefined && was !== n.up) ev(n.name + (n.up ? " came back up" : " went DOWN")); });
+    if (leader !== rprev.leader) ev("leader: " + (rprev.leader || "none") + " → " + (leader || "none (election in progress)"));
+  }
+  const rate = rprev ? Math.max(0, (maxCommit - rprev.maxCommit) / ((now - rprev.t) / 1000)) : 0;
+
+  const term = Math.max(0, ...up.map(n => n.term));
+  $("rsum").textContent = up.length === 0 ? "No Raft nodes reachable"
+    : (leader ? "Leader " + leader : "No leader (election in progress)") +
+      " · term " + term + " · " + up.length + "/" + nodes.length + " nodes up · " +
+      "commit " + maxCommit + " (" + rate.toFixed(1) + "/s)";
+
+  const box = $("nodes"); box.replaceChildren();
+  nodes.forEach(n => {
+    const c = el("div", "node" + (n.up ? (n.is_leader ? " leader" : "") : " down"));
+    const head = el("div", "nh");
+    head.append(el("b", "", n.name), el("span", "badge", n.up ? (n.state || (n.is_leader ? "Leader" : "Follower")) : "DOWN"));
+    c.append(head);
+    if (n.up) {
+      [["term", n.term], ["commit", n.commit_index], ["applied", n.applied_index],
+       ["behind leader", Math.max(0, maxCommit - n.commit_index)], ["apply lag", n.apply_lag],
+       ["snapshot index", n.last_snapshot_index]].forEach(([k, v]) => {
+        const row = el("div", "row"); row.append(el("span", "k", k), el("span", "", String(v))); c.append(row);
+      });
+    }
+    box.append(c);
+  });
+  $("events").replaceChildren(...events.map(e => el("div", "", e)));
+
+  const upMap = {}; nodes.forEach(n => upMap[n.name] = n.up);
+  rprev = { up: upMap, leader, maxCommit, t: now };
+}
+setInterval(raftTick, 1000); raftTick();
 </script></body></html>
