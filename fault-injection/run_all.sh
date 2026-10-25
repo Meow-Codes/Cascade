@@ -29,3 +29,6 @@ bash "$SCRIPT_DIR/memory_pressure_test.sh" || echo "memory pressure test skipped
 echo ""
 echo "Results written to $SCRIPT_DIR/RESULTS.md"
 cat "$SCRIPT_DIR/RESULTS.md"
+
+echo "=== Raft cluster failover (raftd, kill -9 leader) ==="
+bash "$SCRIPT_DIR/raftd_failover_test.sh" || echo "raftd failover test failed -- see above"
