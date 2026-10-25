@@ -19,6 +19,7 @@
 //  - Limit: up to 2^32 - 1 live blocks per pool. Fine at this project's
 //    scale; documented as a known limit rather than a bug.
 
+#include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -26,7 +27,6 @@
 #include <mutex>
 #include <new>
 #include <cassert>
-#include <deque>
 
 namespace cascade::core {
 
@@ -42,8 +42,13 @@ public:
     MemoryPool& operator=(const MemoryPool&) = delete;
 
     ~MemoryPool() {
-        for (auto& slab : slabs_) {
-            ::operator delete(slab, std::align_val_t(alignof(T)));
+        const std::size_t n = slab_count_.load(std::memory_order_acquire);
+
+        for (std::size_t i = 0; i < n; ++i) {
+            ::operator delete(
+                slabs_[i].load(std::memory_order_relaxed),
+                std::align_val_t(alignof(T))
+            );
         }
     }
 
@@ -75,6 +80,10 @@ public:
     void deallocate(void* p) noexcept {
         if (!p) return;
         std::uint32_t index = index_from_ptr(p);
+        if (index == kNullIndex) {
+            assert(false && "Pointer does not belong to this MemoryPool");
+            return;
+        }
         assert(index != kNullIndex);
 
         std::uint64_t old_head = free_head_.load(std::memory_order_acquire);
@@ -89,8 +98,13 @@ public:
     }
 
     std::size_t live_allocations() const { return allocated_.load(std::memory_order_relaxed); }
-    std::size_t slab_count() const { return slabs_.size(); }
-    std::size_t block_capacity() const { return total_blocks_; }
+    std::size_t slab_count() const {
+        return slab_count_.load(std::memory_order_acquire);
+    }
+
+    std::size_t block_capacity() const {
+        return slab_count() * blocks_per_slab_;
+    }
 
 private:
     static constexpr std::uint32_t kNullIndex = 0xFFFFFFFFu;
@@ -102,10 +116,13 @@ private:
     static std::uint32_t index_of(std::uint64_t v) { return static_cast<std::uint32_t>(v & 0xFFFFFFFFu); }
     static std::uint32_t generation_of(std::uint64_t v) { return static_cast<std::uint32_t>(v >> 32); }
 
+    
     void* block_ptr(std::uint32_t global_index) const {
-        std::size_t slab_idx = global_index / blocks_per_slab_;
-        std::size_t offset = global_index % blocks_per_slab_;
-        return slabs_[slab_idx] + offset * stride_;
+        const std::size_t slab_idx = global_index / blocks_per_slab_;
+        const std::size_t offset = global_index % blocks_per_slab_;
+
+        return slabs_[slab_idx].load(std::memory_order_acquire)
+            + offset * stride_;
     }
 
     std::uint32_t next_of(std::uint32_t global_index) const {
@@ -118,18 +135,30 @@ private:
         std::memcpy(block_ptr(global_index), &next, sizeof(next));
     }
 
+    
     std::uint32_t index_from_ptr(void* p) const {
         auto* byte_ptr = static_cast<std::byte*>(p);
-        for (std::size_t s = 0; s < slabs_.size(); ++s) {
-            auto* base = slabs_[s];
+        const std::size_t n = slab_count_.load(std::memory_order_acquire);
+
+        for (std::size_t s = 0; s < n; ++s) {
+            auto* base = slabs_[s].load(std::memory_order_acquire);
             auto* end = base + stride_ * blocks_per_slab_;
+
             if (byte_ptr >= base && byte_ptr < end) {
-                std::size_t offset = static_cast<std::size_t>(byte_ptr - base) / stride_;
-                return static_cast<std::uint32_t>(s * blocks_per_slab_ + offset);
+                const std::size_t offset =
+                    static_cast<std::size_t>(byte_ptr - base) / stride_;
+
+                if (offset >= blocks_per_slab_) {
+                    return kNullIndex;
+                }
+
+                return static_cast<std::uint32_t>(
+                    s * blocks_per_slab_ + offset
+                );
             }
         }
-        assert(false && "Pointer does not belong to this MemoryPool");
-        std::terminate();
+
+        return kNullIndex;
     }
 
     void grow_if_still_empty() {
@@ -138,33 +167,71 @@ private:
         grow();
     }
 
+    
+    
     void grow() {
+        const std::size_t slab_idx =
+            slab_count_.load(std::memory_order_relaxed);
+
+        if (slab_idx >= kMaxSlabs || blocks_per_slab_ == 0) {
+            throw std::bad_alloc();
+        }
+
+        if (slab_idx > static_cast<std::size_t>(kNullIndex) /
+                        blocks_per_slab_) {
+            throw std::bad_alloc();
+        }
+
+        const std::size_t base =
+            slab_idx * blocks_per_slab_;
+
+        if (blocks_per_slab_ >
+            static_cast<std::size_t>(kNullIndex) - base) {
+            throw std::bad_alloc();
+        }
+
         auto* raw = static_cast<std::byte*>(
-            ::operator new(stride_ * blocks_per_slab_, std::align_val_t(alignof(T))));
-        std::uint32_t base_index = static_cast<std::uint32_t>(total_blocks_);
-        slabs_.push_back(raw);
-        total_blocks_ += blocks_per_slab_;
+            ::operator new(
+                stride_ * blocks_per_slab_,
+                std::align_val_t(alignof(T))
+            )
+        );
+
+        slabs_[slab_idx].store(raw, std::memory_order_release);
+        slab_count_.store(slab_idx + 1, std::memory_order_release);
+
+        const auto base_index = static_cast<std::uint32_t>(base);
 
         for (std::size_t i = blocks_per_slab_; i-- > 0;) {
-            std::uint32_t idx = base_index + static_cast<std::uint32_t>(i);
-            std::uint64_t old_head = free_head_.load(std::memory_order_acquire);
+            const std::uint32_t idx =
+                base_index + static_cast<std::uint32_t>(i);
+
+            std::uint64_t old_head =
+                free_head_.load(std::memory_order_acquire);
+
             std::uint64_t new_head;
+
             do {
                 set_next(idx, index_of(old_head));
                 new_head = pack(idx, generation_of(old_head) + 1);
-            } while (!free_head_.compare_exchange_weak(old_head, new_head,
-                                                         std::memory_order_acq_rel,
-                                                         std::memory_order_acquire));
+            } while (!free_head_.compare_exchange_weak(
+                old_head,
+                new_head,
+                std::memory_order_acq_rel,
+                std::memory_order_acquire
+            ));
         }
     }
+
+    static constexpr std::size_t kMaxSlabs = 1024;
 
     std::size_t blocks_per_slab_;
     std::atomic<std::uint64_t> free_head_{pack(kNullIndex, 0)};
     std::atomic<std::size_t> allocated_{0};
-    std::size_t total_blocks_ = 0;
 
+    std::array<std::atomic<std::byte*>, kMaxSlabs> slabs_{};
+    std::atomic<std::size_t> slab_count_{0};
     std::mutex grow_mutex_;
-    std::deque<std::byte*> slabs_;
 };
 
 } // namespace cascade::core

@@ -80,3 +80,24 @@ TEST(MemoryPool, ConcurrentAllocDeallocNoOverlap) {
     for (auto& th : threads) th.join();
     EXPECT_EQ(pool.live_allocations(), 0u);
 }
+
+TEST(MemoryPool, ConcurrentGrowthIsRaceFree) {
+    MemoryPool<Block64> pool(64); // small slabs => hundreds of grow() calls under contention
+    constexpr int kThreads = 8, kPerThread = 2000;
+    std::vector<std::vector<void*>> held(kThreads);
+
+    std::vector<std::thread> threads;
+    for (int t = 0; t < kThreads; ++t) {
+        threads.emplace_back([&, t] {
+            for (int i = 0; i < kPerThread; ++i) held[t].push_back(pool.allocate());
+        });
+    }
+    for (auto& th : threads) th.join();
+
+    std::unordered_set<void*> unique;
+    for (auto& v : held) for (void* p : v) EXPECT_TRUE(unique.insert(p).second) << "block handed out twice";
+    EXPECT_EQ(unique.size(), static_cast<std::size_t>(kThreads * kPerThread));
+
+    for (auto& v : held) for (void* p : v) pool.deallocate(p);
+    EXPECT_EQ(pool.live_allocations(), 0u);
+}
