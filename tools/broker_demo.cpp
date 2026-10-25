@@ -24,7 +24,9 @@ using namespace std::chrono_literals;
 static std::atomic<bool> g_stop{false};
 
 int main(int argc, char** argv) {
-    auto port = static_cast<std::uint16_t>(argc > 1 ? std::atoi(argv[1]) : 9100);
+        auto port = static_cast<std::uint16_t>(argc > 1 ? std::atoi(argv[1]) : 9100);
+    std::string cp_addrs = argc > 2 ? argv[2] : "";             // e.g. "127.0.0.1:50051,127.0.0.1:50052,127.0.0.1:50053"
+    std::string broker_id = argc > 3 ? argv[3] : "cpp-broker-demo";
     std::signal(SIGINT, [](int) { g_stop.store(true); });
 
     auto dir = "/tmp/cascade_broker_demo_" + std::to_string(::getpid());
@@ -32,7 +34,14 @@ int main(int argc, char** argv) {
 
     metrics::MetricsRegistry registry;
     broker::Broker broker(dir);
-    auto topic = broker.create_topic("demo", 1, 64 * 1024 * 1024, /*max_lag_records=*/2000);
+    if (!cp_addrs.empty()) {
+        broker.connect_to_control_plane(cp_addrs, broker_id, "127.0.0.1:" + std::to_string(port),
+                                         /*heartbeat_interval_ms=*/1000);
+        std::printf("registered as '%s' with control plane %s\n", broker_id.c_str(), cp_addrs.c_str());
+    }
+    // Unique name: a cluster remembers topics across demo restarts.
+    auto topic = broker.create_topic("demo-" + std::to_string(::getpid()), 1, 64 * 1024 * 1024,
+                                      /*max_lag_records=*/2000);
     topic->partition(0)->attach_metrics(registry);
     broker::Producer producer(topic);
     broker::Consumer consumer(topic, "demo-group", 1, 0, broker.offset_store());
