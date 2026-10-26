@@ -76,3 +76,11 @@ set_tests_properties(
     ControlPlaneClientTLS.ConnectsSuccessfullyWithCorrectCACert
     PROPERTIES DISABLED TRUE
 )
+
+if(CASCADE_ENABLE_TSAN)
+    set_tests_properties(
+        ControlPlaneClientTLS.FailsWithWrongOrMissingCACert
+        ControlPlaneClientTLS.Integration
+        PROPERTIES DISABLED TRUE
+    )
+endif()
