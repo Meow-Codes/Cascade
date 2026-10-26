@@ -37,13 +37,13 @@ All metrics below were measured on an 8-thread Linux environment (**Ubuntu 24.04
 | **Storage** | Random Read Latency | **p50: 0.41 μs \| p99: 1.03 μs** | 50k reads across 100k records in memory-mapped segment |
 | **Storage** | WAL Crash Recovery | **259.4 ms** | Replaying & validating 500k records (~0.52 ms / 1k records) |
 | **Broker** | Publish Throughput (Durable) | **1,157 msgs/sec** | 500k msgs (128B payload), `FlushPolicy::PerMessage` (`msync` per msg) |
-| **Broker** | Consume Throughput (Zero-Copy) | **6.86M msgs/sec** | 500k msgs polled in 1k-record batches directly from `mmap` segments |
+| **Broker** | Consume Throughput | **6.86M msgs/sec** | 500k messages polled in 1k-record batches from memory-mapped segments; each payload is copied into a vector |
 | **Broker** | Pub $\to$ Consume Latency | **p50: 569.2 μs \| p99: 1.77 ms** | 20,000 ping-pong iterations with per-message disk sync & commit |
 | **Networking** | Connection Establishment | **12,689 – 16,208 conn/sec** | 2,000 concurrent client threads connecting to EpollLoop |
 | **Networking** | TCP Loopback RTT | **p50: 52.4 μs \| p99: 103.1 μs** | 5,000 round-trips over framed loopback socket |
 | **Networking** | Zero-Copy Bulk Transfer | **5,497 MB/s (3.4x speedup)** | `sendfile(2)` kernel copy vs 1,602 MB/s userspace `read()`+`send()` |
-| **Media** | Packet Loss Masking | **10% loss $\to$ 8.8% loss** | 5,000 audio frames at 20ms intervals, target delay 40–200 ms |
-| **Clustering** | Raft Failover & Election | **Zero committed data loss** | Leader killed mid-replicated log; new leader elected within 500ms |
+| **Media** | Packet-Loss Playout Resilience | **9.2% of frames concealed** | Real Linux `netem` test with 10% injected packet loss; playout continued without stalling |
+| **Clustering** | Raft Failover & Election | **Zero committed data loss** | Leader killed mid-replicated log; raftd election measured at approximately 1.0–1.4 s |
 | **Test Suite** | Automated Tests | **95 C++ \| 23 Go passing** | 100% CTest pass rate (1 disabled unit test run via integration suite) |
 
 > **Durability Note**: Clean broker publish throughput is **1,157 msgs/sec** when every single message enforces immediate `msync(MS_SYNC)` for true WAL durability before ACK. Profiling under `perf record --call-graph dwarf` adds ~28% overhead (**837 msgs/sec**). When synchronous disk flushing is relaxed (`FlushPolicy::Manual`), broker publish throughput exceeds **2.01 million msgs/sec**.
@@ -131,12 +131,12 @@ flowchart TD
 - **Broker & Partitions**: Handles topic partitioning, consumer group subscriptions, and reactive producer backpressure.
 - **Consistent Hashing**: Partitions map keys onto a 128-virtual-node ring ([consistent_hash.hpp](cpp/core/broker/consistent_hash.hpp)) to minimize message migration when scaling partitions.
 - **Append-Only WAL**: Stores messages in 64 MiB memory-mapped segments ([segment.hpp](cpp/core/storage/segment.hpp), [log.hpp](cpp/core/storage/log.hpp)), validating CRC32 checksums on every read and recovery pass.
-- **Zero-Copy Network Transfer**: Leverages `sendfile(2)` ([zero_copy_transfer.hpp](cpp/core/net/zero_copy_transfer.hpp)) for consumer reads, streaming data straight from the Linux page cache to socket descriptors.
+- **Memory-Mapped Consumer Reads**: Consumer polling reads records from memory-mapped segments and copies each payload into a vector. A separate `sendfile(2)` utility supports kernel-assisted bulk transfer, but the consumer polling path does not currently use it.
 - **Media Pipeline**: Real-time UDP audio framing, silence detection, jitter buffering, and asymmetric adaptive bitrate adaptation.
 
 ### Control Plane (Go)
 - **gRPC Administration**: Exposes `CascadeControlPlane` gRPC service ([cascade.proto](go/proto/cascade.proto)) for broker registration, heartbeat leases, and topic creation.
-- **Raft Replicated State Machine**: Backed by HashiCorp Raft and BoltDB ([file_node.go](go/raftnode/file_node.go)), ensuring linearizable topic/membership changes survive node restarts and network splits.
+- **Raft Replicated State Machine**: Backed by HashiCorp Raft and BoltDB ([file_node.go](go/raftnode/file_node.go)), replicating topic and membership changes across cluster members. The linearizability guarantee applies to writes; follower reads may be stale.
 - **TLS Transport Security**: Server TLS encryption with root CA validation ([tls_contract_test.go](go/controlplane_test/tls_contract_test.go)), tested against C++ client certificate verification.
 - **Live Dashboard**: Go daemon ([dashboardd](go/cmd/dashboardd/main.go)) serving a real-time web UI and proxying Prometheus metrics.
 
@@ -147,12 +147,12 @@ flowchart TD
 ### Concurrency & Memory Management
 - **Lock-Free SPSC Ring Buffer** ([spsc_queue.hpp](cpp/core/queue/spsc_queue.hpp)): Cacheline-aligned (`alignas(64)`) head and tail atomic pointers preventing false sharing; yields **~380 million ops/sec**.
 - **Lock-Free MPMC Queue** ([mpmc_queue.hpp](cpp/core/queue/mpmc_queue.hpp)): Based on Dmitry Vyukov's bounded queue with atomic turn sequences per slot, scaling to **26M ops/sec** across multi-threaded workloads.
-- **Fixed-Block Memory Pool** ([memory_pool.hpp](cpp/core/memory/memory_pool.hpp)): Preallocates contiguous chunks with an internal freelist to eliminate dynamic heap allocations during steady-state processing.
-- **Hierarchical Timer Wheel** ([timer_wheel.hpp](cpp/core/timer/timer_wheel.hpp)): $O(1)$ timer registration and cancellation with tick-based revolution counters, avoiding timer thread wakeups.
+- **Fixed-Block Memory Pool** ([memory_pool.hpp](cpp/core/memory/memory_pool.hpp)): Reuses fixed-size blocks through a lock-free free list, with a mutex protecting chunk growth. The measured allocation/deallocation benchmark is 29.1 ns/op versus 12.7 ns/op for the tested glibc `new`/`delete` baseline. Its performance benefit is workload-dependent; the benchmark does not demonstrate an improvement over the baseline.
+- **Single-Level Hashed Timer Wheel** ([timer_wheel.hpp](cpp/core/timer/timer_wheel.hpp)): Uses tick-based buckets and revolution counters for timer scheduling and cancellation. The implementation is a single-level hashed wheel, not a hierarchical timer wheel.
 
 ### Crash-Safe Durable Storage
 - **Memory-Mapped Segments**: File segments are memory-mapped into the address space, allowing append operations to write directly into OS page caches without intermediate buffer copies.
-- **CRC32 Checksumming**: Every record header includes magic bytes, payload length, record offset, and a CRC32 checksum to guarantee corruption detection.
+- **CRC32 Checksumming**: Each record header is 16 bytes: an 8-byte offset, a 4-byte payload length, and a 4-byte CRC32 checksum. The header contains no magic number.
 - **Zero-External-Metadata Recovery**: Broker crash recovery scans segment headers sequentially. Offsets are reconstructed solely from on-disk segment state without depending on ZooKeeper, etcd, or external index databases.
 - **Deterministic Segment Rotation**: When an active segment fills (default: 64 MiB), it is atomically sealed, flushed, and rolled over into a new zero-padded segment file (`00000000000000000000.seg`).
 
@@ -164,7 +164,7 @@ flowchart TD
 ### Networking & Reactor Backends
 - **Non-Blocking Epoll Reactor** ([epoll_loop.hpp](cpp/core/net/epoll_loop.hpp)): Level-triggered `epoll` event loop with socket abstractions for TCP framing and rate limiting.
 - **Comparative io_uring Reactor** ([io_uring_loop.hpp](cpp/core/net/io_uring_loop.hpp)): Implements `IORING_OP_POLL_ADD` readiness notification sharing the exact same reactor API as `EpollLoop`, allowing head-to-head architectural comparisons.
-- **Zero-Copy `sendfile(2)` Support**: Consumers streaming caught-up historical segments transfer directly from file cache to socket fd, bypassing user space entirely.
+- **Zero-Copy Bulk Transfer Utility**: `sendfile(2)` ([zero_copy_transfer.hpp](cpp/core/net/zero_copy_transfer.hpp)) supports direct file-to-socket transfer and is benchmarked against userspace `read()` + `send()`. It is not currently integrated into `Consumer::poll()`.
 - **Token-Bucket Rate Limiter**: Per-connection rate limiting with burst capacity enforcement.
 
 ### Real-Time Media Transport
@@ -174,13 +174,16 @@ flowchart TD
 
 ### Observability & Metrics
 - **Prometheus Exposition**: Native HTTP server ([http_metrics_server.hpp](cpp/core/metrics/http_metrics_server.hpp)) serving Prometheus text metrics on `GET /metrics`.
-- **Minimal Overhead Counters**: Metrics update atomic variables in-place, adding less than a fraction of a microsecond overhead on the publish path.
+- **Metrics and Latency Instrumentation**: Metrics are updated using atomic variables. Profiling on WSL2 attributed approximately 15–18% of CPU cycles to clock reads used for latency timing. This is an instrumentation cost, not a measurement of the counters' overhead in isolation.
 - **Live Dashboard**: Integrated Go web service ([cmd/dashboardd](go/cmd/dashboardd/main.go)) that scrapes metrics and provides an interactive visual dashboard.
 
 ### Go Control Plane & Raft Clustering
 - **Consensus with HashiCorp Raft**: Implements disk-backed Raft nodes with BoltDB log storage and file snapshots ([file_node.go](go/raftnode/file_node.go)).
 - **Replicated FSM**: Replicates topic creation, broker registration, and heartbeat updates consistently across cluster members.
 - **Partition Tolerance**: Verified split-brain prevention where isolated minority leaders reject writes while the majority cluster advances safely.
+- **Leader Election Timing**: The `raftd` daemon's election behavior was measured at approximately 1.0–1.4 seconds in the tested environment. The configured 500 ms election timeout is not a guarantee of completing an election within 500 ms.
+- **Read Consistency**: Writes committed through Raft have the documented linearizability guarantee. Follower reads may return stale data and should not be described as linearizable.
+- **Raft Transport Security**: Raft peer traffic is plaintext in the current implementation. TLS protection for the control-plane gRPC connection does not imply encryption of Raft peer communication.
 
 ---
 
@@ -198,7 +201,7 @@ All benchmarks were run natively in the repository using the CMake Release build
 | `bench_queue` | MPMC Queue (4P / 4C) | **9.9M ops/sec** | 4 Producers / 4 Consumers, 4,000,000 ops |
 | `bench_queue` | MPMC Queue (8P / 8C) | **7.3M ops/sec** | 8 Producers / 8 Consumers, 8,000,000 ops |
 | `bench_memory_pool` | Raw `new`/`delete` | **12.7 ns/op** | 2,000,000 ops, 64-byte block (glibc tcache) |
-| `bench_memory_pool` | Pooled `alloc`/`dealloc` | **29.1 ns/op** | 2,000,000 ops, thread-safe mutex-guarded chunk pool |
+| `bench_memory_pool` | Pooled `alloc`/`dealloc` | **29.1 ns/op** | 2,000,000 operations, 64-byte blocks; lock-free free list with mutex-protected growth |
 | `bench_storage` | Sequential Write | **273.4 MB/s** | 200,000 records x 512 bytes (97.7 MiB), 64 MiB segments |
 | `bench_storage` | Random Read Latency | **p50: 0.41 μs \| p99: 1.03 μs** | 50,000 random reads from memory-mapped segment |
 | `bench_storage` | WAL Recovery (10k records) | **5.30 ms** | CRC32 verification across segment files |
@@ -244,7 +247,7 @@ A central finding of Cascade's broker benchmarks is the physical cost of write d
    Under Linux `perf` with DWARF call graph unwinding, the profiler intercepts every kernel transition and unwinds stack frames. This reduces publish throughput from **1,157 msgs/sec** down to **837 msgs/sec** (~28% overhead) and increases median end-to-end latency from **569 μs** to **721 μs**. We explicitly distinguish clean benchmarks from profiled measurements to avoid misleading claims.
 
 3. **Why is consume throughput 6.85 million msgs/sec?**
-   Unlike publishers, consumers read directly from sealed memory-mapped files without issuing system calls or acquiring mutexes. Sequential reads trigger OS page readahead, saturating CPU memory bandwidth.
+   Unlike publishers, consumers read records from memory-mapped segments without a per-record disk synchronization call. The current polling path copies each payload into a vector, with the allocation benchmark reporting 1.00 allocation per read. Sequential reads trigger OS page readahead, saturating CPU memory bandwidth.
 
 ---
 
@@ -289,7 +292,7 @@ bash fault-injection/partition_test.sh
 - **AddressSanitizer (ASan) & UndefinedBehaviorSanitizer (UBSan)**: Supported via `-DCASCADE_ENABLE_ASAN=ON -DCASCADE_ENABLE_UBSAN=ON`.
 - **ThreadSanitizer (TSan)**: Executed in `build-tsan` using `setarch x86_64 -R ctest --test-dir build-tsan` (disabling ASLR to accommodate TSan's memory mapping requirements on Ubuntu 24.04).
   - **33 / 34 tests passed cleanly**.
-  - **Identified Concurrency Finding**: TSan accurately detected a data race in `MemoryPool<Block64, 4096>::grow()` when concurrent allocations exhausted the initial chunk capacity. This is an authentic finding preserved in the codebase documentation rather than concealed.
+  - **Concurrency Finding — Fixed**: TSan detected a data race in `MemoryPool<Block64, 4096>::grow()` when concurrent allocations exhausted the initial chunk capacity. The race was fixed, and a regression test was added to prevent recurrence.
 
 ---
 
@@ -502,7 +505,7 @@ Cascade/
 ## 11. Implementation Status & Roadmap
 
 ### Implemented & Verified Today
-- [x] **C++23 Concurrency**: Cacheline-padded SPSC queue, bounded MPMC queue, fixed-size memory pool, hierarchical timer wheel, async thread pool.
+- [x] **C++23 Concurrency**: Cacheline-padded SPSC queue, bounded MPMC queue, fixed-size memory pool, single-level hashed timer wheel, async thread pool.
 - [x] **Durable Storage**: Append-only WAL, memory-mapped segment rotation, CRC32 checksums, zero-metadata crash recovery.
 - [x] **Messaging Broker**: Topics, partitions, consumer groups, offset tracking, reactive backpressure, virtual-node consistent hashing.
 - [x] **High-Performance Networking**: Level-triggered `epoll` reactor, TCP length-prefix framing, token-bucket rate limiting, `sendfile(2)` zero-copy bulk transfer.
