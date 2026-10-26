@@ -27,3 +27,6 @@ target_link_libraries(bench_zero_copy PRIVATE cascade_core)
 
 add_executable(bench_alloc_reduction bench_alloc_reduction.cpp)
 target_link_libraries(bench_alloc_reduction PRIVATE cascade_core)
+
+add_executable(bench_batch_publish bench_batch_publish.cpp)
+target_link_libraries(bench_batch_publish PRIVATE cascade_core)
