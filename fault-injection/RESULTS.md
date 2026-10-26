@@ -9,3 +9,4 @@
 | Memory pressure (cgroup limit) | SKIPPED | cgroup v2 unavailable in this environment |
 | Raft cluster failover (raftd, kill -9 leader) | PASS | leader n1 -> n2 in 1390ms; C++ broker kept heartbeating; no topic lost; killed node recovered from disk and caught up |
 | Raft cold restart (kill -9 all 3 raftd nodes) | PASS | acknowledged writes survived; all nodes recovered own snapshot + log tail, converged at commit 1329 with 5/5 topics; duplicate create rejected |
+| Batch publish crash (kill -9, batch=64) | PASS | 10/10 runs: every acknowledged batch recovered, zero corrupt records; unacked tails may be partial (batches are not atomic) |

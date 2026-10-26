@@ -15,3 +15,6 @@ target_link_libraries(consumer_stall_demo PRIVATE cascade_core)
 
 add_executable(broker_demo broker_demo.cpp)
 target_link_libraries(broker_demo PRIVATE cascade_core)
+
+add_executable(wal_batch_writer wal_batch_writer.cpp)
+target_link_libraries(wal_batch_writer PRIVATE cascade_core)
