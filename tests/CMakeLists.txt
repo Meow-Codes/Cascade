@@ -32,6 +32,7 @@ set(TEST_SOURCES
     test_zero_copy_transfer.cpp
     test_consistent_hash.cpp
     test_control_plane_client_tls.cpp
+    test_batch_publish.cpp
 )
 
 # Linux/POSIX networking tests
@@ -81,6 +82,7 @@ if(CASCADE_ENABLE_TSAN)
     set_tests_properties(
         ControlPlaneClientTLS.FailsWithWrongOrMissingCACert
         ControlPlaneClientTLS.Integration
+        MetricsOverhead.AttachingMetricsDoesNotMeaningfullySlowPublish
         PROPERTIES DISABLED TRUE
     )
 endif()

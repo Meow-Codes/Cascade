@@ -14,6 +14,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <span>
 
 #include "broker/topic.hpp"
 #include "broker/consistent_hash.hpp"
@@ -23,6 +24,12 @@ namespace cascade::core::broker {
 struct PublishResult {
     int partition;
     std::uint64_t offset;
+};
+
+struct BatchPublishResult {
+    int partition;
+    std::uint64_t first_offset; // records occupy first_offset .. first_offset + count - 1
+    std::size_t count;
 };
 
 class Producer {
@@ -61,6 +68,30 @@ public:
         int p = hash_ring_->partition_for(key);
         auto offset = topic_->partition(p)->publish(payload, len);
         return {p, offset};
+    }
+
+    // Whole batch goes to ONE partition (round-robin per batch) and is
+    // acknowledged after ONE flush. Records get consecutive offsets.
+    BatchPublishResult publish_batch(std::span<const PayloadView> payloads) {
+        int p = static_cast<int>(round_robin_.fetch_add(1, std::memory_order_relaxed) %
+                                  static_cast<std::uint64_t>(topic_->num_partitions()));
+        auto ack = topic_->partition(p)->publish_batch(payloads);
+        return {p, ack.first_offset, ack.count};
+    }
+
+    // Same key -> same partition as publish_keyed(), so per-key ordering
+    // holds across single and batched publishes.
+    BatchPublishResult publish_batch_keyed(const std::string& key, std::span<const PayloadView> payloads) {
+        std::size_t h = std::hash<std::string>{}(key);
+        int p = static_cast<int>(h % static_cast<std::size_t>(topic_->num_partitions()));
+        auto ack = topic_->partition(p)->publish_batch(payloads);
+        return {p, ack.first_offset, ack.count};
+    }
+
+    std::optional<BatchPublishResult> try_publish_batch(int partition, std::span<const PayloadView> payloads) {
+        auto ack = topic_->partition(partition)->try_publish_batch(payloads);
+        if (!ack.has_value()) return std::nullopt;
+        return BatchPublishResult{partition, ack->first_offset, ack->count};
     }
 
     // Non-blocking variant so callers (and tests) can observe backpressure
